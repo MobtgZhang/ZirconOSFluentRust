@@ -1,0 +1,6 @@
+Noto Sans (bundled as NotoSans-Regular.ttf in this directory)
+is Copyright Google Inc. and licensed under the SIL Open Font License 1.1.
+
+Full license text: https://openfontlicense.org/open-font-license-1-1-0/
+
+Source: https://github.com/google/fonts/tree/main/ofl/notosans
