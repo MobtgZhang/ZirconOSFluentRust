@@ -1,0 +1,1 @@
+//! NTFS log file.

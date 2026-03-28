@@ -1,0 +1,1 @@
+//! VMX / VTL awareness.

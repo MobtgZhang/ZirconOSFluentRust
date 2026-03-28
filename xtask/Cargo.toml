@@ -1,0 +1,17 @@
+[package]
+name = "xtask"
+version = "0.1.0"
+edition.workspace = true
+publish = false
+description = "Build, pack ESP, run QEMU, and rasterize Zircon Fluent SVG assets"
+license.workspace = true
+repository.workspace = true
+
+[[bin]]
+name = "xtask"
+path = "src/main.rs"
+
+[dependencies]
+image = { version = "0.25", default-features = false, features = ["png"] }
+resvg = "0.44"
+tiny-skia = "0.11"

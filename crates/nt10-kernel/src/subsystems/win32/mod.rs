@@ -1,0 +1,19 @@
+//! Win32 subsystem.
+
+pub mod cmd;
+pub mod conhost;
+pub mod console;
+pub mod csrss_host;
+pub mod csrss_proto;
+pub mod register;
+pub mod shell_bringup;
+pub mod dwrite;
+pub mod exec;
+pub mod gdi32;
+pub mod powershell;
+pub mod subsystem;
+pub mod windowing;
+pub mod user32;
+pub mod wow64;
+pub mod input_win32;
+pub mod compositor_ipc;

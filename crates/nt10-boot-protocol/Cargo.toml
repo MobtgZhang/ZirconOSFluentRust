@@ -1,0 +1,9 @@
+[package]
+name = "nt10-boot-protocol"
+version = "0.0.0"
+edition.workspace = true
+description = "ZBM10 handoff structures shared by UEFI loader and kernel (ZirconBootInfo)"
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
