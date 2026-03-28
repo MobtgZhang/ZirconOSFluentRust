@@ -1,6 +1,6 @@
 # ZirconOSFluentRust
 
-以 **Windows NT 10.0.19045** 为设计参照的 **ZirconOS NT10** 内核方向实验仓库：**Rust** + **Cargo** 工作区，模块树对齐 [ideas/ZirconOS_NT10_Architecture.md](ideas/ZirconOS_NT10_Architecture.md) 第 4 节。
+以 **Windows NT 10.0.19045** 为设计参照的 **ZirconOS NT10** 内核方向实验仓库：**Rust** + **Cargo** 工作区。
 
 ## 快速开始
 
