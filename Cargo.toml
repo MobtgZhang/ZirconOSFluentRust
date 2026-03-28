@@ -1,0 +1,20 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/nt10-boot-protocol",
+    "crates/nt10-kernel",
+    "crates/nt10-kernel-bin",
+    "crates/nt10-boot-uefi",
+    "xtask",
+]
+
+[workspace.package]
+edition = "2021"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/MobtgZhang/ZirconOSFluentRust"
+
+[profile.dev]
+panic = "abort"
+
+[profile.release]
+panic = "abort"
