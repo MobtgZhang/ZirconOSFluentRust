@@ -1,0 +1,132 @@
+{
+  "title": "Windows 10 内置图标分类（idea1）与 ZirconOSFluent 资源对照",
+  "visual_source": "ZirconOS Fluent 原创 SVG，见 resources/MANIFEST.md；栅格化由 cargo run -p xtask -- rasterize-resources",
+  "categories": [
+    {
+      "id": "shell_desktop",
+      "name_zh": "系统核心图标 · 桌面图标",
+      "items": [
+        {
+          "name_zh": "此电脑",
+          "manifest_id": "icon.computer.32",
+          "zircon_svg": "icons/computer.svg"
+        },
+        {
+          "name_zh": "回收站",
+          "manifest_id": "icon.recycle_bin.32",
+          "zircon_svg": "icons/recycle_bin.svg"
+        },
+        {
+          "name_zh": "网络",
+          "manifest_id": "icon.network.32",
+          "zircon_svg": "icons/network.svg"
+        },
+        {
+          "name_zh": "用户文档 / 文件夹",
+          "manifest_id": "icon.documents.32",
+          "zircon_svg": "icons/documents.svg"
+        },
+        {
+          "name_zh": "文件资源管理器",
+          "manifest_id": "icon.file_manager.32",
+          "zircon_svg": "icons/file_manager.svg"
+        }
+      ]
+    },
+    {
+      "id": "shell_builtin_apps",
+      "name_zh": "内置应用图标（节选）",
+      "items": [
+        {
+          "name_zh": "设置",
+          "manifest_id": "icon.settings.32",
+          "zircon_svg": "icons/settings.svg"
+        },
+        {
+          "name_zh": "终端 / CMD",
+          "manifest_id": "icon.terminal.32",
+          "zircon_svg": "icons/terminal.svg"
+        },
+        {
+          "name_zh": "浏览器",
+          "manifest_id": "icon.browser.32",
+          "zircon_svg": "icons/browser.svg"
+        },
+        {
+          "name_zh": "邮件",
+          "manifest_id": "icon.mail.32",
+          "zircon_svg": "icons/mail.svg"
+        },
+        {
+          "name_zh": "日历",
+          "manifest_id": "icon.calendar.32",
+          "zircon_svg": "icons/calendar.svg"
+        },
+        {
+          "name_zh": "计算器",
+          "manifest_id": "icon.calculator.32",
+          "zircon_svg": "icons/calculator.svg"
+        },
+        {
+          "name_zh": "应用商店",
+          "manifest_id": "icon.store.32",
+          "zircon_svg": "icons/store.svg"
+        }
+      ]
+    },
+    {
+      "id": "start_menu_rows",
+      "name_zh": "NT10 UEFI Shell 开始菜单四行（当前实现）",
+      "items": [
+        {
+          "name_zh": "NT Shell",
+          "manifest_id": "icon.terminal.32",
+          "zircon_svg": "icons/terminal.svg"
+        },
+        {
+          "name_zh": "Documents",
+          "manifest_id": "icon.documents.32",
+          "zircon_svg": "icons/documents.svg"
+        },
+        {
+          "name_zh": "Settings",
+          "manifest_id": "icon.settings.32",
+          "zircon_svg": "icons/settings.svg"
+        },
+        {
+          "name_zh": "Power（占位视觉，同源 store.svg）",
+          "manifest_id": "icon.power.32",
+          "zircon_svg": "icons/store.svg"
+        }
+      ]
+    },
+    {
+      "id": "file_types",
+      "name_zh": "文件类型图标（idea1 列举，暂无独立 Zircon 资产）",
+      "items": [
+        { "name_zh": "文档类（.txt / .pdf …）" },
+        { "name_zh": "图像类（.png / .jpg …）" },
+        { "name_zh": "可执行类（.exe / .dll …）" }
+      ]
+    },
+    {
+      "id": "overlays_tray_taskbar",
+      "name_zh": "叠加图标 / 托盘 / 任务栏（idea1 分类，运行时行为见 Win32 Shell 文档）",
+      "items": [
+        { "name_zh": "快捷方式箭头" },
+        { "name_zh": "系统托盘 NOTIFYICON" },
+        { "name_zh": "任务栏按钮图标" }
+      ]
+    },
+    {
+      "id": "dll_sources_reference",
+      "name_zh": "真实 Windows 上图标资源 DLL（仅语义参考，不包含微软资源）",
+      "items": [
+        { "name": "shell32.dll" },
+        { "name": "imageres.dll" },
+        { "name": "explorer.exe" },
+        { "name": "user32.dll" }
+      ]
+    }
+  ]
+}

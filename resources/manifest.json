@@ -1,0 +1,433 @@
+{
+  "name": "ZirconOS NT10 resources",
+  "version": 3,
+  "license_note": "Wallpapers: original ZirconOS meadow/countryside vector art; icons: Zircon Fluent SVG pack. See resources/MANIFEST.md.",
+  "assets": [
+    {
+      "id": "wallpaper.countryside_dawn.1080p",
+      "path": "wallpapers/wallpaper-countryside_dawn-1080p.png",
+      "role": "wallpaper",
+      "note": "Original meadow/countryside SVG rasterized 1920x1080 (countryside_dawn)"
+    },
+    {
+      "id": "wallpaper.rice_field_breeze.1080p",
+      "path": "wallpapers/wallpaper-rice_field_breeze-1080p.png",
+      "role": "wallpaper",
+      "note": "Original meadow/countryside SVG rasterized 1920x1080 (rice_field_breeze)"
+    },
+    {
+      "id": "wallpaper.village_path.1080p",
+      "path": "wallpapers/wallpaper-village_path-1080p.png",
+      "role": "wallpaper",
+      "note": "Original meadow/countryside SVG rasterized 1920x1080 (village_path)"
+    },
+    {
+      "id": "wallpaper.soft_cloud_hills.1080p",
+      "path": "wallpapers/wallpaper-soft_cloud_hills-1080p.png",
+      "role": "wallpaper",
+      "note": "Original meadow/countryside SVG rasterized 1920x1080 (soft_cloud_hills)"
+    },
+    {
+      "id": "wallpaper.golden_hour_meadow.1080p",
+      "path": "wallpapers/wallpaper-golden_hour_meadow-1080p.png",
+      "role": "wallpaper",
+      "note": "Original meadow/countryside SVG rasterized 1920x1080 (golden_hour_meadow)"
+    },
+    {
+      "id": "wallpaper.misty_valley.1080p",
+      "path": "wallpapers/wallpaper-misty_valley-1080p.png",
+      "role": "wallpaper",
+      "note": "Original meadow/countryside SVG rasterized 1920x1080 (misty_valley)"
+    },
+    {
+      "id": "icon.browser.16",
+      "path": "icons/browser/icon-16.png",
+      "role": "icon",
+      "note": "Zircon Fluent icon browser, 16px"
+    },
+    {
+      "id": "icon.browser.24",
+      "path": "icons/browser/icon-24.png",
+      "role": "icon",
+      "note": "Zircon Fluent icon browser, 24px"
+    },
+    {
+      "id": "icon.browser.32",
+      "path": "icons/browser/icon-32.png",
+      "role": "icon",
+      "note": "Zircon Fluent icon browser, 32px"
+    },
+    {
+      "id": "icon.browser.48",
+      "path": "icons/browser/icon-48.png",
+      "role": "icon",
+      "note": "Zircon Fluent icon browser, 48px"
+    },
+    {
+      "id": "icon.browser.256",
+      "path": "icons/browser/icon-256.png",
+      "role": "icon",
+      "note": "Zircon Fluent icon browser, 256px"
+    },
+    {
+      "id": "icon.calculator.16",
+      "path": "icons/calculator/icon-16.png",
+      "role": "icon",
+      "note": "Zircon Fluent icon calculator, 16px"
+    },
+    {
+      "id": "icon.calculator.24",
+      "path": "icons/calculator/icon-24.png",
+      "role": "icon",
+      "note": "Zircon Fluent icon calculator, 24px"
+    },
+    {
+      "id": "icon.calculator.32",
+      "path": "icons/calculator/icon-32.png",
+      "role": "icon",
+      "note": "Zircon Fluent icon calculator, 32px"
+    },
+    {
+      "id": "icon.calculator.48",
+      "path": "icons/calculator/icon-48.png",
+      "role": "icon",
+      "note": "Zircon Fluent icon calculator, 48px"
+    },
+    {
+      "id": "icon.calculator.256",
+      "path": "icons/calculator/icon-256.png",
+      "role": "icon",
+      "note": "Zircon Fluent icon calculator, 256px"
+    },
+    {
+      "id": "icon.calendar.16",
+      "path": "icons/calendar/icon-16.png",
+      "role": "icon",
+      "note": "Zircon Fluent icon calendar, 16px"
+    },
+    {
+      "id": "icon.calendar.24",
+      "path": "icons/calendar/icon-24.png",
+      "role": "icon",
+      "note": "Zircon Fluent icon calendar, 24px"
+    },
+    {
+      "id": "icon.calendar.32",
+      "path": "icons/calendar/icon-32.png",
+      "role": "icon",
+      "note": "Zircon Fluent icon calendar, 32px"
+    },
+    {
+      "id": "icon.calendar.48",
+      "path": "icons/calendar/icon-48.png",
+      "role": "icon",
+      "note": "Zircon Fluent icon calendar, 48px"
+    },
+    {
+      "id": "icon.calendar.256",
+      "path": "icons/calendar/icon-256.png",
+      "role": "icon",
+      "note": "Zircon Fluent icon calendar, 256px"
+    },
+    {
+      "id": "icon.computer.16",
+      "path": "icons/computer/icon-16.png",
+      "role": "icon",
+      "note": "Zircon Fluent icon computer, 16px"
+    },
+    {
+      "id": "icon.computer.24",
+      "path": "icons/computer/icon-24.png",
+      "role": "icon",
+      "note": "Zircon Fluent icon computer, 24px"
+    },
+    {
+      "id": "icon.computer.32",
+      "path": "icons/computer/icon-32.png",
+      "role": "icon",
+      "note": "Zircon Fluent icon computer, 32px"
+    },
+    {
+      "id": "icon.computer.48",
+      "path": "icons/computer/icon-48.png",
+      "role": "icon",
+      "note": "Zircon Fluent icon computer, 48px"
+    },
+    {
+      "id": "icon.computer.256",
+      "path": "icons/computer/icon-256.png",
+      "role": "icon",
+      "note": "Zircon Fluent icon computer, 256px"
+    },
+    {
+      "id": "icon.documents.16",
+      "path": "icons/documents/icon-16.png",
+      "role": "icon",
+      "note": "Zircon Fluent icon documents, 16px"
+    },
+    {
+      "id": "icon.documents.24",
+      "path": "icons/documents/icon-24.png",
+      "role": "icon",
+      "note": "Zircon Fluent icon documents, 24px"
+    },
+    {
+      "id": "icon.documents.32",
+      "path": "icons/documents/icon-32.png",
+      "role": "icon",
+      "note": "Zircon Fluent icon documents, 32px"
+    },
+    {
+      "id": "icon.documents.48",
+      "path": "icons/documents/icon-48.png",
+      "role": "icon",
+      "note": "Zircon Fluent icon documents, 48px"
+    },
+    {
+      "id": "icon.documents.256",
+      "path": "icons/documents/icon-256.png",
+      "role": "icon",
+      "note": "Zircon Fluent icon documents, 256px"
+    },
+    {
+      "id": "icon.file_manager.16",
+      "path": "icons/file_manager/icon-16.png",
+      "role": "icon",
+      "note": "Zircon Fluent icon file_manager, 16px"
+    },
+    {
+      "id": "icon.file_manager.24",
+      "path": "icons/file_manager/icon-24.png",
+      "role": "icon",
+      "note": "Zircon Fluent icon file_manager, 24px"
+    },
+    {
+      "id": "icon.file_manager.32",
+      "path": "icons/file_manager/icon-32.png",
+      "role": "icon",
+      "note": "Zircon Fluent icon file_manager, 32px"
+    },
+    {
+      "id": "icon.file_manager.48",
+      "path": "icons/file_manager/icon-48.png",
+      "role": "icon",
+      "note": "Zircon Fluent icon file_manager, 48px"
+    },
+    {
+      "id": "icon.file_manager.256",
+      "path": "icons/file_manager/icon-256.png",
+      "role": "icon",
+      "note": "Zircon Fluent icon file_manager, 256px"
+    },
+    {
+      "id": "icon.mail.16",
+      "path": "icons/mail/icon-16.png",
+      "role": "icon",
+      "note": "Zircon Fluent icon mail, 16px"
+    },
+    {
+      "id": "icon.mail.24",
+      "path": "icons/mail/icon-24.png",
+      "role": "icon",
+      "note": "Zircon Fluent icon mail, 24px"
+    },
+    {
+      "id": "icon.mail.32",
+      "path": "icons/mail/icon-32.png",
+      "role": "icon",
+      "note": "Zircon Fluent icon mail, 32px"
+    },
+    {
+      "id": "icon.mail.48",
+      "path": "icons/mail/icon-48.png",
+      "role": "icon",
+      "note": "Zircon Fluent icon mail, 48px"
+    },
+    {
+      "id": "icon.mail.256",
+      "path": "icons/mail/icon-256.png",
+      "role": "icon",
+      "note": "Zircon Fluent icon mail, 256px"
+    },
+    {
+      "id": "icon.network.16",
+      "path": "icons/network/icon-16.png",
+      "role": "icon",
+      "note": "Zircon Fluent icon network, 16px"
+    },
+    {
+      "id": "icon.network.24",
+      "path": "icons/network/icon-24.png",
+      "role": "icon",
+      "note": "Zircon Fluent icon network, 24px"
+    },
+    {
+      "id": "icon.network.32",
+      "path": "icons/network/icon-32.png",
+      "role": "icon",
+      "note": "Zircon Fluent icon network, 32px"
+    },
+    {
+      "id": "icon.network.48",
+      "path": "icons/network/icon-48.png",
+      "role": "icon",
+      "note": "Zircon Fluent icon network, 48px"
+    },
+    {
+      "id": "icon.network.256",
+      "path": "icons/network/icon-256.png",
+      "role": "icon",
+      "note": "Zircon Fluent icon network, 256px"
+    },
+    {
+      "id": "icon.power.16",
+      "path": "icons/power/icon-16.png",
+      "role": "icon",
+      "note": "Zircon Fluent icon power, 16px"
+    },
+    {
+      "id": "icon.power.24",
+      "path": "icons/power/icon-24.png",
+      "role": "icon",
+      "note": "Zircon Fluent icon power, 24px"
+    },
+    {
+      "id": "icon.power.32",
+      "path": "icons/power/icon-32.png",
+      "role": "icon",
+      "note": "Zircon Fluent icon power, 32px"
+    },
+    {
+      "id": "icon.power.48",
+      "path": "icons/power/icon-48.png",
+      "role": "icon",
+      "note": "Zircon Fluent icon power, 48px"
+    },
+    {
+      "id": "icon.power.256",
+      "path": "icons/power/icon-256.png",
+      "role": "icon",
+      "note": "Zircon Fluent icon power, 256px"
+    },
+    {
+      "id": "icon.recycle_bin.16",
+      "path": "icons/recycle_bin/icon-16.png",
+      "role": "icon",
+      "note": "Zircon Fluent icon recycle_bin, 16px"
+    },
+    {
+      "id": "icon.recycle_bin.24",
+      "path": "icons/recycle_bin/icon-24.png",
+      "role": "icon",
+      "note": "Zircon Fluent icon recycle_bin, 24px"
+    },
+    {
+      "id": "icon.recycle_bin.32",
+      "path": "icons/recycle_bin/icon-32.png",
+      "role": "icon",
+      "note": "Zircon Fluent icon recycle_bin, 32px"
+    },
+    {
+      "id": "icon.recycle_bin.48",
+      "path": "icons/recycle_bin/icon-48.png",
+      "role": "icon",
+      "note": "Zircon Fluent icon recycle_bin, 48px"
+    },
+    {
+      "id": "icon.recycle_bin.256",
+      "path": "icons/recycle_bin/icon-256.png",
+      "role": "icon",
+      "note": "Zircon Fluent icon recycle_bin, 256px"
+    },
+    {
+      "id": "icon.settings.16",
+      "path": "icons/settings/icon-16.png",
+      "role": "icon",
+      "note": "Zircon Fluent icon settings, 16px"
+    },
+    {
+      "id": "icon.settings.24",
+      "path": "icons/settings/icon-24.png",
+      "role": "icon",
+      "note": "Zircon Fluent icon settings, 24px"
+    },
+    {
+      "id": "icon.settings.32",
+      "path": "icons/settings/icon-32.png",
+      "role": "icon",
+      "note": "Zircon Fluent icon settings, 32px"
+    },
+    {
+      "id": "icon.settings.48",
+      "path": "icons/settings/icon-48.png",
+      "role": "icon",
+      "note": "Zircon Fluent icon settings, 48px"
+    },
+    {
+      "id": "icon.settings.256",
+      "path": "icons/settings/icon-256.png",
+      "role": "icon",
+      "note": "Zircon Fluent icon settings, 256px"
+    },
+    {
+      "id": "icon.store.16",
+      "path": "icons/store/icon-16.png",
+      "role": "icon",
+      "note": "Zircon Fluent icon store, 16px"
+    },
+    {
+      "id": "icon.store.24",
+      "path": "icons/store/icon-24.png",
+      "role": "icon",
+      "note": "Zircon Fluent icon store, 24px"
+    },
+    {
+      "id": "icon.store.32",
+      "path": "icons/store/icon-32.png",
+      "role": "icon",
+      "note": "Zircon Fluent icon store, 32px"
+    },
+    {
+      "id": "icon.store.48",
+      "path": "icons/store/icon-48.png",
+      "role": "icon",
+      "note": "Zircon Fluent icon store, 48px"
+    },
+    {
+      "id": "icon.store.256",
+      "path": "icons/store/icon-256.png",
+      "role": "icon",
+      "note": "Zircon Fluent icon store, 256px"
+    },
+    {
+      "id": "icon.terminal.16",
+      "path": "icons/terminal/icon-16.png",
+      "role": "icon",
+      "note": "Zircon Fluent icon terminal, 16px"
+    },
+    {
+      "id": "icon.terminal.24",
+      "path": "icons/terminal/icon-24.png",
+      "role": "icon",
+      "note": "Zircon Fluent icon terminal, 24px"
+    },
+    {
+      "id": "icon.terminal.32",
+      "path": "icons/terminal/icon-32.png",
+      "role": "icon",
+      "note": "Zircon Fluent icon terminal, 32px"
+    },
+    {
+      "id": "icon.terminal.48",
+      "path": "icons/terminal/icon-48.png",
+      "role": "icon",
+      "note": "Zircon Fluent icon terminal, 48px"
+    },
+    {
+      "id": "icon.terminal.256",
+      "path": "icons/terminal/icon-256.png",
+      "role": "icon",
+      "note": "Zircon Fluent icon terminal, 256px"
+    }
+  ]
+}

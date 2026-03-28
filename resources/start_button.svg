@@ -1,0 +1,20 @@
+<svg viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="winGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#60cdff"/>
+      <stop offset="50%" stop-color="#0078d4"/>
+      <stop offset="100%" stop-color="#004578"/>
+    </linearGradient>
+  </defs>
+  <!-- Four-pane window logo (ZirconOS Fluent style) -->
+  <g transform="translate(10,10)">
+    <!-- Top-left pane -->
+    <rect x="0" y="0" width="12" height="12" rx="1" fill="url(#winGrad)" opacity="0.9"/>
+    <!-- Top-right pane -->
+    <rect x="14" y="0" width="12" height="12" rx="1" fill="url(#winGrad)" opacity="0.75"/>
+    <!-- Bottom-left pane -->
+    <rect x="0" y="14" width="12" height="12" rx="1" fill="url(#winGrad)" opacity="0.75"/>
+    <!-- Bottom-right pane -->
+    <rect x="14" y="14" width="12" height="12" rx="1" fill="url(#winGrad)" opacity="0.6"/>
+  </g>
+</svg>

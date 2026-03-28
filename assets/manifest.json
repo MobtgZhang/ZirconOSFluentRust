@@ -1,0 +1,17 @@
+{
+  "name": "ZirconOS NT10 brand pack",
+  "version": 1,
+  "assets": [
+    {
+      "id": "logo.svg",
+      "path": "zirconos-mark.svg",
+      "role": "vector_logo"
+    },
+    {
+      "id": "raster.ppm",
+      "path": "generated/zirconos-mark-64.ppm",
+      "role": "raster_preview",
+      "note": "Produced by scripts/generate-brand-assets.py"
+    }
+  ]
+}

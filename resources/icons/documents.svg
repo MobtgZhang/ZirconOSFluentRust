@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <!-- Back page -->
+  <rect x="7" y="3" width="16" height="22" rx="1.5" fill="#383838" stroke="#555" stroke-width="0.5"/>
+  <!-- Front page -->
+  <rect x="9" y="5" width="16" height="22" rx="1.5" fill="#2d2d2d" stroke="#0078d4" stroke-width="0.8"/>
+  <!-- Document lines -->
+  <line x1="12" y1="10" x2="22" y2="10" stroke="#60cdff" stroke-width="1" opacity="0.5"/>
+  <line x1="12" y1="14" x2="20" y2="14" stroke="#aaa" stroke-width="0.8" opacity="0.35"/>
+  <line x1="12" y1="17" x2="22" y2="17" stroke="#aaa" stroke-width="0.8" opacity="0.35"/>
+  <line x1="12" y1="20" x2="18" y2="20" stroke="#aaa" stroke-width="0.8" opacity="0.35"/>
+  <!-- Corner fold -->
+  <path d="M21 5 L25 5 L25 9 Z" fill="#0078d4" opacity="0.3"/>
+</svg>

@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1920" height="1080" viewBox="0 0 1920 1080" preserveAspectRatio="xMidYMid slice">
+  <defs>
+    <linearGradient id="skyGold" x1="0%" y1="0%" x2="100%" y2="40%">
+      <stop offset="0%" stop-color="#ff9a56"/>
+      <stop offset="40%" stop-color="#ffc66b"/>
+      <stop offset="100%" stop-color="#ffeaa7"/>
+    </linearGradient>
+    <linearGradient id="meadow" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#c4d65a"/>
+      <stop offset="50%" stop-color="#9bc04a"/>
+      <stop offset="100%" stop-color="#6a9a3a"/>
+    </linearGradient>
+    <linearGradient id="shadowBand" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#4a7a30" stop-opacity="0.25"/>
+      <stop offset="50%" stop-color="#4a7a30" stop-opacity="0.45"/>
+      <stop offset="100%" stop-color="#4a7a30" stop-opacity="0.2"/>
+    </linearGradient>
+  </defs>
+  <rect width="1920" height="1080" fill="url(#skyGold)"/>
+  <ellipse cx="200" cy="280" rx="90" ry="28" fill="#fff3d4" opacity="0.5"/>
+  <path d="M0 480 Q960 400 1920 460 L1920 1080 L0 1080 Z" fill="#8faa50" opacity="0.6"/>
+  <path d="M0 560 Q960 500 1920 540 L1920 1080 L0 1080 Z" fill="url(#meadow)"/>
+  <path d="M0 620 L1920 580 L1920 620 L0 660 Z" fill="url(#shadowBand)"/>
+  <path d="M0 700 L1920 650 L1920 690 L0 740 Z" fill="url(#shadowBand)" opacity="0.8"/>
+  <path d="M0 800 Q960 760 1920 820 L1920 1080 L0 1080 Z" fill="#4d8028"/>
+  <path d="M0 900 Q640 860 1280 920 T1920 880 L1920 1080 L0 1080 Z" fill="#3a6620"/>
+  <circle cx="1720" cy="320" r="72" fill="#ffcc66" opacity="0.95"/>
+  <circle cx="1720" cy="320" r="88" fill="#ffd080" opacity="0.35"/>
+</svg>

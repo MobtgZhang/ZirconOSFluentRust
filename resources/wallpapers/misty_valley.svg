@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1920" height="1080" viewBox="0 0 1920 1080" preserveAspectRatio="xMidYMid slice">
+  <defs>
+    <linearGradient id="skyMist" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#9eb8d4"/>
+      <stop offset="50%" stop-color="#c5d4e0"/>
+      <stop offset="100%" stop-color="#dde8ef"/>
+    </linearGradient>
+    <linearGradient id="ridgeFar" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#a8b8c8"/>
+      <stop offset="100%" stop-color="#7a8fa0"/>
+    </linearGradient>
+    <linearGradient id="ridgeMid" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#8a9aa8"/>
+      <stop offset="100%" stop-color="#5a6b78"/>
+    </linearGradient>
+    <linearGradient id="fogLayer" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#eef4f8" stop-opacity="0"/>
+      <stop offset="40%" stop-color="#e4edf4" stop-opacity="0.5"/>
+      <stop offset="100%" stop-color="#dce6ee" stop-opacity="0.85"/>
+    </linearGradient>
+  </defs>
+  <rect width="1920" height="1080" fill="url(#skyMist)"/>
+  <path d="M0 280 L320 240 L640 300 L960 220 L1280 280 L1600 200 L1920 260 L1920 1080 L0 1080 Z" fill="url(#ridgeFar)" opacity="0.7"/>
+  <path d="M0 400 L400 340 L800 420 L1200 360 L1600 400 L1920 380 L1920 1080 L0 1080 Z" fill="url(#ridgeMid)" opacity="0.75"/>
+  <path d="M0 520 L500 480 L1000 540 L1500 500 L1920 520 L1920 1080 L0 1080 Z" fill="#5a6d62" opacity="0.65"/>
+  <path d="M0 640 L600 600 L1200 660 L1920 620 L1920 1080 L0 1080 Z" fill="#4a5c52"/>
+  <rect width="1920" height="1080" fill="url(#fogLayer)"/>
+  <path d="M0 780 Q960 720 1920 800 L1920 1080 L0 1080 Z" fill="#3d4f48" opacity="0.5"/>
+</svg>

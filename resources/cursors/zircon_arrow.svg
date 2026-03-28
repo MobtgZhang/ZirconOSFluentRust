@@ -1,0 +1,17 @@
+<svg viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="arrowBody" x1="20%" y1="0%" x2="80%" y2="100%">
+      <stop offset="0%" stop-color="#ffffff"/>
+      <stop offset="100%" stop-color="#e0e0e0"/>
+    </linearGradient>
+    <filter id="cursorShadow" x="-10%" y="-10%" width="120%" height="120%">
+      <feDropShadow dx="1" dy="1" stdDeviation="0.8" flood-color="#000" flood-opacity="0.3"/>
+    </filter>
+  </defs>
+  <!-- Shadow outline -->
+  <path d="M4,1 L4,27 L10,21 L16,30 L20,28 L14,19 L22,19 Z"
+        fill="#1a1a1a" stroke="#000" stroke-width="1" stroke-linejoin="round"/>
+  <!-- White body -->
+  <path d="M5,2.5 L5,25.5 L10.5,20 L16,28.5 L19,27 L13.5,18.5 L20.5,18.5 Z"
+        fill="url(#arrowBody)" filter="url(#cursorShadow)" stroke="#333" stroke-width="0.3" stroke-linejoin="round"/>
+</svg>

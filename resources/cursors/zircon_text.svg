@@ -1,0 +1,20 @@
+<svg viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <filter id="textShadow">
+      <feDropShadow dx="0.5" dy="0.5" stdDeviation="0.5" flood-color="#000" flood-opacity="0.3"/>
+    </filter>
+  </defs>
+  <!-- I-beam cursor -->
+  <g filter="url(#textShadow)">
+    <!-- Top serif -->
+    <line x1="12" y1="4" x2="20" y2="4" stroke="#1a1a1a" stroke-width="2" stroke-linecap="round"/>
+    <!-- Vertical bar -->
+    <line x1="16" y1="4" x2="16" y2="28" stroke="#1a1a1a" stroke-width="2" stroke-linecap="round"/>
+    <!-- Bottom serif -->
+    <line x1="12" y1="28" x2="20" y2="28" stroke="#1a1a1a" stroke-width="2" stroke-linecap="round"/>
+    <!-- White highlights -->
+    <line x1="12" y1="4" x2="20" y2="4" stroke="white" stroke-width="1" stroke-linecap="round"/>
+    <line x1="16" y1="4" x2="16" y2="28" stroke="white" stroke-width="1" stroke-linecap="round"/>
+    <line x1="12" y1="28" x2="20" y2="28" stroke="white" stroke-width="1" stroke-linecap="round"/>
+  </g>
+</svg>

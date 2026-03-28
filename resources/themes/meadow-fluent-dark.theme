@@ -1,0 +1,47 @@
+; ZirconOS Meadow Fluent Dark — palette from countryside dawn / misty valley wallpapers
+; Compositor-oriented placeholders (Acrylic + Reveal + Depth)
+
+[Theme]
+DisplayName=ZirconOS Meadow Fluent Dark
+ThemeId=meadow_fluent_dark
+ColorScheme=dark
+
+[DWM.Acrylic]
+BlurRadius=22
+BlurPasses=4
+NoiseOpacity=7
+LuminosityBlend=135
+TintColor=243844
+TintOpacity=72
+
+[DWM.Reveal]
+Enabled=1
+Radius=96
+Opacity=58
+
+[DWM.Shadow]
+DepthLayers=5
+BaseSize=12
+
+[Colors]
+DesktopBackground=243844
+Accent=E8A87C
+AccentLight=F5C4A8
+AccentDark=C97B5A
+TextPrimary=F2F4F8
+TextSecondary=A8B4C4
+Surface=2F3D48
+SurfaceStroke=4A5A68
+CardBackground=384854
+TaskbarBackground=1E2A32
+TitlebarBackground=2A4A52
+TitlebarText=FFFFFF
+WindowBackground=252F38
+WindowBorder=3D6B72
+
+[Layout]
+TaskbarHeight=48
+TitlebarHeight=32
+StartMenuWidth=640
+StartMenuHeight=560
+ActionCenterWidth=320

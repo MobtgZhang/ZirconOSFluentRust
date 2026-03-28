@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1920" height="1080" viewBox="0 0 1920 1080" preserveAspectRatio="xMidYMid slice">
+  <defs>
+    <linearGradient id="skyRice" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#87ceeb"/>
+      <stop offset="50%" stop-color="#b8e0f5"/>
+      <stop offset="100%" stop-color="#e8f4fc"/>
+    </linearGradient>
+    <linearGradient id="terrace1" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#4a8c5c"/>
+      <stop offset="50%" stop-color="#5fa370"/>
+      <stop offset="100%" stop-color="#4a8c5c"/>
+    </linearGradient>
+    <linearGradient id="terrace2" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#3d7a4f"/>
+      <stop offset="50%" stop-color="#528f62"/>
+      <stop offset="100%" stop-color="#3d7a4f"/>
+    </linearGradient>
+  </defs>
+  <rect width="1920" height="1080" fill="url(#skyRice)"/>
+  <ellipse cx="400" cy="200" rx="200" ry="60" fill="#ffffff" opacity="0.85"/>
+  <ellipse cx="520" cy="195" rx="140" ry="45" fill="#ffffff" opacity="0.7"/>
+  <ellipse cx="1500" cy="160" rx="280" ry="72" fill="#ffffff" opacity="0.9"/>
+  <ellipse cx="1680" cy="175" rx="160" ry="48" fill="#ffffff" opacity="0.65"/>
+  <path d="M0 450 L1920 380 L1920 1080 L0 1080 Z" fill="#7aab7c" opacity="0.5"/>
+  <path d="M0 0 L1920 0 L1920 320 L0 400 Z" fill="url(#terrace1)" opacity="0.25"/>
+  <path d="M0 520 L1920 440 L1920 1080 L0 1080 Z" fill="url(#terrace2)"/>
+  <g stroke="#2d5a3d" stroke-width="1.2" opacity="0.35" fill="none">
+    <path d="M0 560 Q960 520 1920 560"/>
+    <path d="M0 600 Q960 560 1920 600"/>
+    <path d="M0 640 Q960 600 1920 640"/>
+    <path d="M0 680 Q960 640 1920 680"/>
+    <path d="M0 720 Q960 680 1920 720"/>
+    <path d="M0 760 Q960 720 1920 760"/>
+    <path d="M0 800 Q960 760 1920 800"/>
+  </g>
+  <path d="M0 820 Q640 780 1280 830 T1920 800 L1920 1080 L0 1080 Z" fill="#356644"/>
+</svg>

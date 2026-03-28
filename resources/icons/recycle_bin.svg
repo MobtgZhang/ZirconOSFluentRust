@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <!-- Bin body -->
+  <path d="M8,10 L10,28 L22,28 L24,10 Z" fill="#2d2d2d" stroke="#555" stroke-width="0.8" rx="1"/>
+  <!-- Lid -->
+  <rect x="6" y="7" width="20" height="3" rx="1.5" fill="#383838" stroke="#0078d4" stroke-width="0.6"/>
+  <!-- Handle -->
+  <rect x="13" y="4" width="6" height="3" rx="1" fill="none" stroke="#0078d4" stroke-width="0.8"/>
+  <!-- Vertical slats -->
+  <line x1="12" y1="13" x2="11.5" y2="25" stroke="#555" stroke-width="0.6"/>
+  <line x1="16" y1="13" x2="16" y2="25" stroke="#555" stroke-width="0.6"/>
+  <line x1="20" y1="13" x2="20.5" y2="25" stroke="#555" stroke-width="0.6"/>
+  <!-- Recycle arrow hint -->
+  <path d="M14 17 L16 15 L18 17" fill="none" stroke="#60cdff" stroke-width="0.8" opacity="0.4"/>
+</svg>

@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1920" height="1080" viewBox="0 0 1920 1080" preserveAspectRatio="xMidYMid slice">
+  <defs>
+    <linearGradient id="skyVillage" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#6b8cae"/>
+      <stop offset="40%" stop-color="#d4a574"/>
+      <stop offset="100%" stop-color="#f0c9a0"/>
+    </linearGradient>
+    <linearGradient id="pathGrad" x1="50%" y1="0%" x2="50%" y2="100%">
+      <stop offset="0%" stop-color="#c4a882"/>
+      <stop offset="100%" stop-color="#8b7355"/>
+    </linearGradient>
+  </defs>
+  <rect width="1920" height="1080" fill="url(#skyVillage)"/>
+  <path d="M0 380 Q960 280 1920 360 L1920 1080 L0 1080 Z" fill="#5a6b5e"/>
+  <path d="M0 480 Q960 400 1920 460 L1920 1080 L0 1080 Z" fill="#4d5f52"/>
+  <ellipse cx="960" cy="920" rx="420" ry="120" fill="url(#pathGrad)" opacity="0.95"/>
+  <path d="M760 1080 L880 720 L1040 720 L1160 1080 Z" fill="#7a8a72" opacity="0.9"/>
+  <rect x="900" y="640" width="120" height="90" rx="4" fill="#8b7355" opacity="0.85"/>
+  <polygon points="900,640 960,580 1020,640" fill="#a08060"/>
+  <rect x="1180" y="600" width="100" height="75" rx="3" fill="#7d6a58" opacity="0.8"/>
+  <polygon points="1180,600 1230,545 1280,600" fill="#9a8068"/>
+  <rect x="1420" y="620" width="85" height="65" rx="3" fill="#6d5c4e" opacity="0.75"/>
+  <polygon points="1420,620 1462,575 1505,620" fill="#8a7260"/>
+  <ellipse cx="400" cy="520" rx="35" ry="80" fill="#3d5240" opacity="0.85"/>
+  <ellipse cx="450" cy="510" rx="28" ry="70" fill="#3d5240" opacity="0.8"/>
+  <ellipse cx="1520" cy="540" rx="32" ry="85" fill="#3d5240" opacity="0.82"/>
+  <circle cx="1700" cy="220" r="55" fill="#ffd4a8" opacity="0.95"/>
+</svg>

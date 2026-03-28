@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1920" height="1080" viewBox="0 0 1920 1080" preserveAspectRatio="xMidYMid slice">
+  <defs>
+    <linearGradient id="skyDawn" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#3d4f7a"/>
+      <stop offset="35%" stop-color="#c97b8c"/>
+      <stop offset="65%" stop-color="#f4a574"/>
+      <stop offset="100%" stop-color="#ffd9a8"/>
+    </linearGradient>
+    <linearGradient id="mist" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#e8eef5" stop-opacity="0"/>
+      <stop offset="55%" stop-color="#d4dce8" stop-opacity="0.45"/>
+      <stop offset="100%" stop-color="#c5d0e0" stop-opacity="0.75"/>
+    </linearGradient>
+    <linearGradient id="field" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#5a7a4e"/>
+      <stop offset="100%" stop-color="#3d5c3a"/>
+    </linearGradient>
+    <linearGradient id="farHill" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#6b7d8f"/>
+      <stop offset="100%" stop-color="#4a5568"/>
+    </linearGradient>
+  </defs>
+  <rect width="1920" height="1080" fill="url(#skyDawn)"/>
+  <ellipse cx="1480" cy="280" rx="220" ry="68" fill="#fff5e6" opacity="0.35"/>
+  <ellipse cx="320" cy="220" rx="180" ry="52" fill="#ffe8dd" opacity="0.4"/>
+  <path d="M0 520 Q480 420 960 500 T1920 480 L1920 1080 L0 1080 Z" fill="url(#farHill)"/>
+  <path d="M0 620 Q640 540 1280 620 T1920 600 L1920 1080 L0 1080 Z" fill="#5d6b5a" opacity="0.9"/>
+  <path d="M0 700 Q400 640 960 720 T1920 680 L1920 1080 L0 1080 Z" fill="url(#field)"/>
+  <g opacity="0.85">
+    <path d="M0 780 L200 760 L400 785 L600 765 L800 790 L1000 770 L1200 795 L1400 775 L1600 800 L1780 780 L1920 805 L1920 1080 L0 1080 Z" fill="#2d4a32"/>
+    <path d="M0 820 L240 805 L480 825 L720 808 L960 830 L1200 812 L1440 835 L1680 818 L1920 840 L1920 1080 L0 1080 Z" fill="#243d28"/>
+  </g>
+  <rect width="1920" height="1080" fill="url(#mist)"/>
+  <circle cx="200" cy="180" r="48" fill="#ffecd2" opacity="0.9"/>
+</svg>
