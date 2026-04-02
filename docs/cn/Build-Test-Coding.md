@@ -80,6 +80,34 @@ ISO 镜像生成仍为后续规划；**xtask** 已提供 `build` / `pack-esp` / 
 
 **本仓库现状**：以 **`cargo check` 通过** 为基线；纯逻辑可在 host 上跑单元测试（如 `cargo test -p nt10-kernel` 测 `mm::vad`）。**QEMU / 串口**里程碑（COM1 上的 `nt10-kernel: …` 日志）见 [scripts/run-qemu-x86_64.sh](../../scripts/run-qemu-x86_64.sh) 与根目录 [Makefile](../../Makefile) 的 `run-debug`。
 
+**Phase 1（UEFI + OVMF）Ring-3 冒烟**：在串口输出中应依次看到（顺序可能紧邻）：`PML4[256] high-half 512MiB mirror + CR3 switch OK`、`UEFI user thread starting (ring3 + demand stack)`、`demand-zero #PF handled`（首次用户栈按需映射）、`user syscall smoke` 与 `syscall num 0x… return`。若 `high-half` 切换失败或 PFN 未初始化，则会退回 `skip ring3 smoke` 或 `UEFI first-user CR3 clone failed` 等提示。
+
+**离线核对（无 QEMU）**：[`scripts/verify-phase1-serial-keywords.sh`](../../scripts/verify-phase1-serial-keywords.sh) 用 ripgrep 确认上述子串仍存在于内核源码中；CI 在 [`.github/workflows/ci.yml`](../../.github/workflows/ci.yml) 中运行该脚本。
+
+**Phase 3（消息泵 / Win32 bring-up）串口验收**：在 UEFI + OVMF + COM1 日志中（`bringup_kernel_thread_smoke` 路径）应能看到 `Phase3 msg pump smoke begin`、`Phase3 WndProc dispatched`、`Phase3 msg pump smoke OK`。对应实现见 [`crates/nt10-kernel/src/subsystems/win32/csrss_host.rs`](../../crates/nt10-kernel/src/subsystems/win32/csrss_host.rs) 与 [`msg_dispatch.rs`](../../crates/nt10-kernel/src/subsystems/win32/msg_dispatch.rs)。
+
+**维护者手跑（CI 不替代）**：Phase 1/3 的 [`scripts/verify-phase1-serial-keywords.sh`](../../scripts/verify-phase1-serial-keywords.sh) / [`scripts/verify-phase3-serial-keywords.sh`](../../scripts/verify-phase3-serial-keywords.sh) 仅检查源码子串；发布或合并前建议在本地执行 `./scripts/run-qemu-x86_64.sh`（或 `cargo run -p xtask -- qemu`），对照本节关键字核对 **真实串口输出**。
+
+**Phase 3 离线核对**：[`scripts/verify-phase3-serial-keywords.sh`](../../scripts/verify-phase3-serial-keywords.sh)。
+
+**与 content1.2「第三阶段」差异（脚注）**：当前为 bring-up 实现：`GetMessage` 空队列在 [`MsgWaitGen`](../../crates/nt10-kernel/src/ke/msg_wait.rs) 与 [`ke/sched::yield_message_wait`](../../crates/nt10-kernel/src/ke/sched.rs) 上协作让出，**不是**完整 NT 式 `KeWait` + 抢占睡眠；`SendMessage` 已由 [`send_message_kernel`](../../crates/nt10-kernel/src/subsystems/win32/msg_dispatch.rs) 覆盖同线程与跨线程单槽同步。用户态 TEB 镜像与独立 `libs/user32` crate 仍属后续工作。
+
+**Phase 4（离屏 + 合成 + GDI bring-up）**：单元测试覆盖离屏 BGRA、[`text_bringup`](../../crates/nt10-kernel/src/subsystems/win32/text_bringup.rs) 位图字串与 [`compositor`](../../crates/nt10-kernel/src/subsystems/win32/compositor.rs) 合成；串口关键字 `Phase4 compositor smoke begin` / `Phase4 compositor smoke OK` 见 [`csrss_host.rs`](../../crates/nt10-kernel/src/subsystems/win32/csrss_host.rs)。**Ring-3 syscall 演示字节**（`mov rax, 0x102` + `syscall`）见 [`bringup_user.rs`](../../crates/nt10-kernel/src/mm/bringup_user.rs) 中 `USER_RING3_GETMESSAGE_SYSCALL_DEMO`（ZirconOS 自有寄存器约定，非 Windows 布局照抄）。
+
+**Phase 4 离线核对**：[`scripts/verify-phase4-serial-keywords.sh`](../../scripts/verify-phase4-serial-keywords.sh)。
+
+**Phase 4 收尾（UEFI + GOP）**：[`session_win32.rs`](../../crates/nt10-kernel/src/desktop/fluent/session_win32.rs) 在每帧将 [`composite_desktop_to_framebuffer`](../../crates/nt10-kernel/src/subsystems/win32/compositor.rs) 结果叠加到 **线性 GOP**（在 Fluent shell 绘制之后、软件指针之前）；合成使用 [`blend_src_over_bgra`](../../crates/nt10-kernel/src/subsystems/win32/window_surface.rs)；`BeginPaint`/`EndPaint` bring-up 见 [`win32_paint.rs`](../../crates/nt10-kernel/src/subsystems/win32/win32_paint.rs) 中 `BringupPaintStruct`。串口关键字示例：`nt10-phase4: GOP_COMPOSITE`、`nt10-phase4: WM_LBUTTONDOWN`（客户区点击验证）。
+
+**Phase 5（HWND + WM_PAINT Shell）**：同一模块提供壁纸 HWND（全屏 `WIN_EX_NO_HIT_TEST`、资源壁纸经 `WM_PAINT` 写入离屏槽并与 [`CompositeDesktopFilter`](../../crates/nt10-kernel/src/subsystems/win32/compositor.rs) 底部分层一致）、任务栏 HWND（`WS_EX_TOOLWINDOW`）、桌面图标 `BitBlt`（`resources` 构建期栅格）、可拖动测试窗（`WM_NCHITTEST` / `HTCAPTION` / `HTBORDER`）、`WM_TIMER` 任务栏刷新（与 [`ke/timer.rs`](../../crates/nt10-kernel/src/ke/timer.rs) 文档路径一致）、任务栏槽与 [`WindowStack`](../../crates/nt10-kernel/src/desktop/fluent/app_host.rs) 的 **最小化/还原**、时钟弹出 HWND（`CLOCK_FLYOUT` 源码关键字）、桌面右键菜单（`WIN_EX_SHELL_POPUP` + 向壁纸 HWND `PostMessage` [`ZR_WM_MENU_COMMAND`](../../crates/nt10-kernel/src/desktop/fluent/session_win32.rs)）。手跑 QEMU COM1 建议逐项确认：壁纸与左侧快捷方式共存、任务栏分区色带与命中、可拖测试窗、右键菜单项、时钟弹窗时间与日期刷新、槽位与托管应用切换。
+
+**Phase 5 离线核对**：[`scripts/verify-phase5-serial-keywords.sh`](../../scripts/verify-phase5-serial-keywords.sh)。
+
+**Phase 6（ALPC / Ring-3 csrss — 中期）**：[`post_cross_address_space`](../../crates/nt10-kernel/src/alpc/cross_proc.rs) 在同 CR3 / `target_cr3==0` 下写入内核 bounce；[`resolve_imports_for_image_stub`](../../crates/nt10-kernel/src/loader/import_.rs) 对 **零 DLL 导入** 的 PE 返回真；[`ProcessAddressSpaceBringup`](../../crates/nt10-kernel/src/mm/vm.rs) 与 [`servers/smss.rs`](../../crates/nt10-kernel/src/servers/smss.rs) / [`alpc/phase6_csrss.rs`](../../crates/nt10-kernel/src/alpc/phase6_csrss.rs) / [`csrss_host.rs`](../../crates/nt10-kernel/src/subsystems/win32/csrss_host.rs) 中的回退开关为脚手架。路由与职责边界见 [`Phase6-Routing.md`](Phase6-Routing.md)。
+
+**Phase 6 离线核对**：[`scripts/verify-phase6-serial-keywords.sh`](../../scripts/verify-phase6-serial-keywords.sh)。
+
+**字体策略（Phase 4/5）**：内核 `no_std` 路径以 [`text_bringup`](../../crates/nt10-kernel/src/subsystems/win32/text_bringup.rs) 固定栅格为主；[`font_stub`](../../crates/nt10-kernel/src/desktop/fluent/font_stub.rs) 描述 OFL/构建期资源衔接；可选 **fontdue**、**构建期预栅格** 或 **带 `alloc` 的受限堆** 留在 Ring3/工具链阶段集成（与 `build.rs` 生成资源一致即可）。
+
 ## 3. 编码规范（母版 §27 摘要，Rust）
 
 ### 3.1 命名
