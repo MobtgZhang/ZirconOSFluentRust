@@ -137,7 +137,7 @@ pub struct DesktopSession {
     pub fb: FramebufferInfo,
     pub cx: u32,
     pub cy: u32,
-    dwm: DwmCompositor,
+    pub(crate) dwm: DwmCompositor,
     pub(crate) layout: TaskbarLayout,
     #[cfg(target_arch = "x86_64")]
     xhci: Option<XhciHidState>,

@@ -9,8 +9,7 @@ use crate::hal::Hal;
 use crate::libs::win32_abi::{Hwnd, LParam, LResult, WParam};
 use crate::ob::winsta::{WS_EX_TOOLWINDOW, WIN_EX_NO_HIT_TEST, WIN_EX_SHELL_POPUP};
 use crate::subsystems::win32::compositor::{
-    composite_desktop_to_framebuffer, composite_desktop_to_framebuffer_filtered,
-    CompositeDesktopFilter,
+    composite_desktop_to_framebuffer_filtered, CompositeDesktopFilter,
 };
 use crate::subsystems::win32::gdi32::{
     bringup_bitblt_bgra_to_slot, bringup_fill_rect_with_selected_brush, bringup_select_solid_brush,
@@ -405,6 +404,7 @@ pub fn composite_win32_wallpaper_only_to_buffer(
 }
 
 /// Composite Win32 layers above the wallpaper (after shell draws shortcuts/chrome on top of wallpaper).
+/// [`DesktopSession::refresh_desktop`](super::session::DesktopSession::refresh_desktop) draws the pointer **after** this.
 pub fn composite_win32_above_wallpaper_to_gop(session: &mut DesktopSession) {
     if !session.win32.desktop_ready || session.fb.base == 0 {
         return;
@@ -415,20 +415,25 @@ pub fn composite_win32_above_wallpaper_to_gop(session: &mut DesktopSession) {
     let stride = session.fb.pixels_per_scan_line;
     unsafe {
         let buf = core::slice::from_raw_parts_mut(session.fb.base as *mut u8, cap);
-        let _ = composite_desktop_to_framebuffer_filtered(
-            &session.win32_desktop,
+        let super::session::DesktopSession {
+            ref mut dwm,
+            ref win32_desktop,
+            ..
+        } = session;
+        let _ = super::dwm::composite_desktop_with_dwm_overlay(
+            dwm,
+            win32_desktop,
             buf,
             dst_w,
             dst_h,
             stride,
-            0,
-            0,
             CompositeDesktopFilter::ExcludeBottomLayer,
         );
     }
 }
 
 /// Composite Win32 desktop into the linear GOP mapping after the Fluent shell has drawn.
+/// Caller must paint the software pointer on top afterward (see `refresh_desktop` / pointer move paths).
 pub fn composite_win32_to_gop(session: &mut DesktopSession) {
     if !session.win32.desktop_ready || session.fb.base == 0 {
         return;
@@ -439,14 +444,19 @@ pub fn composite_win32_to_gop(session: &mut DesktopSession) {
     let stride = session.fb.pixels_per_scan_line;
     unsafe {
         let buf = core::slice::from_raw_parts_mut(session.fb.base as *mut u8, cap);
-        let _ = composite_desktop_to_framebuffer(
-            &session.win32_desktop,
+        let super::session::DesktopSession {
+            ref mut dwm,
+            ref win32_desktop,
+            ..
+        } = session;
+        let _ = super::dwm::composite_desktop_with_dwm_overlay(
+            dwm,
+            win32_desktop,
             buf,
             dst_w,
             dst_h,
             stride,
-            0,
-            0,
+            CompositeDesktopFilter::All,
         );
     }
 }

@@ -159,6 +159,91 @@ impl DwmCompositor {
         }
         Ok(())
     }
+
+    /// One frame: fill dirty rect with `base_bgra`, then apply acrylic/mica strength from `root` fields.
+    pub fn commit_dirty_acrylic_mica_light(
+        &mut self,
+        buf: &mut [u8],
+        stride_px: u32,
+        base_bgra: [u8; 4],
+        theme_tint_bgra: u32,
+    ) -> Result<(), ()> {
+        let Some(root) = self.root else {
+            return Ok(());
+        };
+        let Some(d) = self.take_merged_dirty() else {
+            return Ok(());
+        };
+        self.pending_dirty = Some(d);
+        self.commit_dirty_flat_bgra(buf, stride_px, base_bgra)?;
+        let strength = (root.acrylic_blur_radius as u32)
+            .saturating_add(root.mica_altitude as u32)
+            .min(255) as u8;
+        if strength == 0 {
+            return Ok(());
+        }
+        let w = root.width;
+        let stride = stride_px as usize;
+        let x0 = d.x0.min(w);
+        let x1 = d.x1.min(w).max(x0);
+        let y0 = d.y0.min(root.height);
+        let y1 = d.y1.min(root.height).max(y0);
+        for row in y0..y1 {
+            let base = row as usize * stride * 4;
+            for col in x0..x1 {
+                let i = base + col as usize * 4;
+                if i + 4 > buf.len() {
+                    return Err(());
+                }
+                let mut px = [buf[i], buf[i + 1], buf[i + 2], buf[i + 3]];
+                super::acrylic::blend_bgra_pixel_under_tint(&mut px, theme_tint_bgra, strength);
+                buf[i..i + 4].copy_from_slice(&px);
+            }
+        }
+        Ok(())
+    }
+}
+
+/// Win32 software compositor pass plus optional DWM dirty overlay (single scheduling point for UEFI GOP).
+pub fn composite_desktop_with_dwm_overlay(
+    dwm: &mut DwmCompositor,
+    desktop: &crate::ob::winsta::DesktopObject,
+    fb: &mut [u8],
+    dst_w: u32,
+    dst_h: u32,
+    stride_px: u32,
+    filter: crate::subsystems::win32::compositor::CompositeDesktopFilter,
+) -> Result<(), ()> {
+    crate::subsystems::win32::compositor::composite_desktop_to_framebuffer_filtered(
+        desktop,
+        fb,
+        dst_w,
+        dst_h,
+        stride_px,
+        0,
+        0,
+        filter,
+    )?;
+    if dwm.debug_composition_overlay {
+        if let Some(r) = dwm.root {
+            if r.acrylic_blur_radius > 0 || r.mica_altitude > 0 {
+                let tint = super::acrylic::AcrylicMicaTheme::fluent_default().tint_bgra;
+                let _ = dwm.commit_dirty_acrylic_mica_light(
+                    fb,
+                    stride_px,
+                    [0x30, 0x60, 0xFF, 0x14],
+                    tint,
+                );
+            } else {
+                let _ = dwm.commit_dirty_flat_bgra(fb, stride_px, [0x30, 0x60, 0xFF, 0x14]);
+            }
+        } else {
+            let _ = dwm.take_merged_dirty();
+        }
+    } else {
+        let _ = dwm.take_merged_dirty();
+    }
+    Ok(())
 }
 
 #[cfg(test)]
@@ -186,5 +271,26 @@ mod tests {
             .commit_dirty_flat_bgra(&mut px, 4, [9, 8, 7, 6])
             .is_ok());
         assert_eq!(px[0], 9);
+    }
+
+    #[test]
+    fn acrylic_mica_light_blend_changes_pixel() {
+        let mut c = DwmCompositor::new();
+        let mut surf = CompositorSurface::fullscreen(4, 4);
+        surf.acrylic_blur_radius = 80;
+        surf.mica_altitude = 40;
+        c.root = Some(surf);
+        c.mark_dirty(DirtyRect {
+            x0: 0,
+            y0: 0,
+            x1: 1,
+            y1: 1,
+        });
+        let mut px = [0u8; 64];
+        let tint = crate::desktop::fluent::acrylic::AcrylicMicaTheme::fluent_default().tint_bgra;
+        assert!(c
+            .commit_dirty_acrylic_mica_light(&mut px, 4, [10, 20, 30, 255], tint)
+            .is_ok());
+        assert_ne!(px[0], 10);
     }
 }

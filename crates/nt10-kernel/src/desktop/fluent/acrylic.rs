@@ -29,3 +29,26 @@ impl AcrylicMicaTheme {
         }
     }
 }
+
+/// Lightweight `dst = lerp(dst, tint, strength)` per channel (bring-up blend, not real blur).
+pub fn blend_bgra_pixel_under_tint(dst: &mut [u8; 4], tint_bgra: u32, strength: u8) {
+    if strength == 0 {
+        return;
+    }
+    let t = strength as u32;
+    let tb = (tint_bgra & 0xFF) as u32;
+    let tg = ((tint_bgra >> 8) & 0xFF) as u32;
+    let tr = ((tint_bgra >> 16) & 0xFF) as u32;
+    let ta = ((tint_bgra >> 24) & 0xFF) as u32;
+    let s = [
+        tb,
+        tg,
+        tr,
+        (ta * t / 255).min(255),
+    ];
+    for i in 0..4 {
+        let d = dst[i] as u32;
+        let k = s[i];
+        dst[i] = ((d * (255 - t) + k * t) / 255).min(255) as u8;
+    }
+}

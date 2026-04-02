@@ -1,17 +1,21 @@
-//! Text rasterization bring-up — OFL / project fonts are wired in `build.rs`; this module holds
-//! Fluent-facing **API stubs** until a ring3 font stack or in-kernel shaper lands.
+//! Text rasterization bring-up — OFL / project fonts are wired in **`nt10-kernel/build.rs`** (e.g. Noto
+//! Sans for UI Latin, Libertinus for desktop captions); this module holds Fluent-facing **API stubs**
+//! until a Ring-3 font stack or in-kernel shaper lands.
 //!
-//! Kernel Win32 `TextOut` bring-up uses bitmap glyphs in [`crate::subsystems::win32::text_bringup`]
-//! (no runtime TrueType parse in `no_std` without heap).
+//! ## Current default (no global `alloc` on bare metal)
 //!
-//! ## Phase 4 / 5 strategy (fontdue vs bitmap)
+//! - **Win32 `TextOut` / taskbar / captions**: bitmap glyphs and metrics from
+//!   [`crate::subsystems::win32::text_bringup`] (codepoints baked at build time).
+//! - **Host-only `build.rs`**: uses the `fontdue` **crate** to rasterize selected strings into
+//!   `include_bytes!` blobs — **not** linked into the `no_std` kernel image.
 //!
-//! 1. **Default (current)**: embed additional glyphs in `text_bringup` and/or ship **pre-rasterized**
-//!    codepoints from build scripts into read-only sections (no runtime allocator).
-//! 2. **Optional kernel heap**: gate `fontdue` (or similar) behind an `alloc` feature with a **small,
-//!    capped** arena — only when product policy allows kernel `no_std`+alloc.
-//! 3. **Ring3**: full shaping stays in user-mode `user32`/DirectWrite-class stack when csrss/ALPC
-//!    path replaces kernel-drawn UEFI chrome.
+//! ## Optional paths (documented only)
+//!
+//! 1. **More codepoints**: extend `text_bringup` tables or add `build.rs` raster passes (still no
+//!    runtime TTF parse in the kernel).
+//! 2. **Kernel `fontdue`**: would require a **global allocator** + policy gate (`Cargo` feature); not
+//!    enabled in this workspace today.
+//! 3. **Ring-3**: full shaping in user-mode when csrss + ALPC replace kernel-drawn UEFI chrome.
 
 /// Placeholder metrics for a Fluent text run (future: link to `fontdue` output in `build.rs`).
 #[derive(Clone, Copy, Debug)]
