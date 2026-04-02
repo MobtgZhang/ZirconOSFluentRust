@@ -107,7 +107,7 @@ fn try_demand_file_mapped_page(cr2: u64, err: u64, vad: &VadTable) -> bool {
         crate::arch::x86_64::tlb::invlpg(va);
     }
     pfn::pfn_set_reference_count(pa, 1);
-    crate::hal::x86_64::serial::write_line(b"nt10-kernel: file-backed demand #PF handled\r\n");
+    crate::rtl::log::log_line_serial(crate::rtl::log::SUB_MM, b"file-backed demand #PF handled");
     true
 }
 
@@ -211,7 +211,7 @@ fn try_demand_zero_page(cr2: u64, err: u64, vad: &VadTable) -> bool {
         crate::arch::x86_64::tlb::invlpg(va);
     }
     pfn::pfn_set_reference_count(pa, 1);
-    crate::hal::x86_64::serial::write_line(b"nt10-kernel: demand-zero #PF handled\r\n");
+    crate::rtl::log::log_line_serial(crate::rtl::log::SUB_MM, b"demand-zero #PF handled");
     true
 }
 

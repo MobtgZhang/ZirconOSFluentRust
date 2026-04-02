@@ -3,10 +3,15 @@
 //! [`refill_class`] already **packs multiple small chunks into one 4 KiB PFN**; for large contiguous
 //! off-screen or Section buffers use [`alloc_pfn_page_slab`] / [`free_pfn_page_slab`].
 
-use core::sync::atomic::{AtomicUsize, Ordering};
+use core::sync::atomic::{AtomicU32, AtomicUsize, Ordering};
 
 use super::phys::{pfn_bringup_alloc, pfn_bringup_free};
+#[cfg(not(test))]
+use crate::rtl::log::{log_line_serial, log_usize_serial, SUB_MM};
 use crate::sync::spinlock::SpinLock;
+
+/// Failed `ex_allocate_pool_with_tag` attempts (telemetry).
+static POOL_ALLOC_FAILS: AtomicU32 = AtomicU32::new(0);
 
 /// Total bytes per chunk (8-byte header + payload).
 const CLASSES: [usize; 9] = [16, 32, 64, 128, 256, 512, 1024, 2048, 4096];
@@ -67,19 +72,49 @@ unsafe fn refill_class(state: &mut PoolState, idx: usize) -> bool {
     true
 }
 
+#[cfg(test)]
+fn log_pool_alloc_fail(_reason: &[u8], _size: usize, _class_idx: Option<usize>) {
+    POOL_ALLOC_FAILS.fetch_add(1, Ordering::Relaxed);
+}
+
+#[cfg(not(test))]
+fn log_pool_alloc_fail(reason: &[u8], size: usize, class_idx: Option<usize>) {
+    POOL_ALLOC_FAILS.fetch_add(1, Ordering::Relaxed);
+    log_line_serial(SUB_MM, reason);
+    log_usize_serial(SUB_MM, b"pool_alloc_req_bytes=", size);
+    if let Some(i) = class_idx {
+        log_usize_serial(SUB_MM, b"pool_alloc_class_idx=", i);
+    }
+}
+
 /// `ExAllocatePoolWithTag` analogue — returns zeroed **payload** (after 8-byte header) or null.
 #[must_use]
 pub fn ex_allocate_pool_with_tag(size: usize, tag: u32) -> *mut u8 {
     let Some(idx) = class_index_for_alloc(size) else {
+        log_pool_alloc_fail(
+            b"ex_allocate_pool_with_tag rejected (size 0 or no slab class)",
+            size,
+            None,
+        );
         return core::ptr::null_mut();
     };
     let mut g = POOL_LOCK.lock();
     let state = &mut *g;
     unsafe {
         if state.heads[idx] == 0 && !refill_class(state, idx) {
+            log_pool_alloc_fail(
+                b"ex_allocate_pool_with_tag failed (PFN refill)",
+                size,
+                Some(idx),
+            );
             return core::ptr::null_mut();
         }
         let Some(p) = pop_head(state, idx) else {
+            log_pool_alloc_fail(
+                b"ex_allocate_pool_with_tag failed (empty freelist after refill)",
+                size,
+                Some(idx),
+            );
             return core::ptr::null_mut();
         };
         core::ptr::write_unaligned(p as *mut u32, tag);
@@ -101,6 +136,8 @@ pub fn ex_free_pool_with_tag(ptr: *mut u8, tag: u32) {
         let stored_tag = core::ptr::read_unaligned(hdr as *const u32);
         let idx = core::ptr::read_unaligned(hdr.add(4) as *const u32) as usize;
         if stored_tag != tag || idx >= CLASSES.len() {
+            #[cfg(not(test))]
+            log_line_serial(SUB_MM, b"ex_free_pool_with_tag ignored (tag/class mismatch)");
             return;
         }
         let mut g = POOL_LOCK.lock();
@@ -137,6 +174,12 @@ pub fn free_pfn_page_slab(pa: u64) {
     }
 }
 
+/// Count of failed [`ex_allocate_pool_with_tag`] calls (for diagnostics).
+#[must_use]
+pub fn pool_alloc_fail_count() -> u32 {
+    POOL_ALLOC_FAILS.load(Ordering::Relaxed)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -150,5 +193,18 @@ mod tests {
             *(p as *mut u8) = 0xAB;
         }
         free_pfn_page_slab(p);
+    }
+
+    #[test]
+    fn pool_small_round_trip_reuses_freelist() {
+        let p = ex_allocate_pool_with_tag(16, 0x4141_4141);
+        if p.is_null() {
+            // Host tests have no PFN bring-up; same pattern as `pfn_page_slab_round_trip`.
+            return;
+        }
+        ex_free_pool_with_tag(p, 0x4141_4141);
+        let p2 = ex_allocate_pool_with_tag(16, 0x4141_4141);
+        assert!(!p2.is_null());
+        ex_free_pool_with_tag(p2, 0x4141_4141);
     }
 }
