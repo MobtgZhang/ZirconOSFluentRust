@@ -18,7 +18,7 @@
 
 - [ ] 用文档术语核对 `ob/namespace.rs` 中 **Session 桶** 与 `\Sessions\0` 默认会话行为。
 - [ ] 用一张图或表描述 `\Sessions\N`、会话目录、默认交互会话与当前命名空间实现的对应关系。
-- [ ] 定义 ZirconOS **单会话 bring-up** 下允许的简化：窗口站数量、桌面数量、是否仅一个交互桌面。
+- [ ] 定义 ZirconOSFluent **单会话 bring-up** 下允许的简化：窗口站数量、桌面数量、是否仅一个交互桌面。
 - [ ] 定义 **Winsta0 / Default** 桌面与登录桌面的对象图（即使先为单会话单桌面）。
 
 ## 实现 TODO：API 与 csrss/win32k backlog

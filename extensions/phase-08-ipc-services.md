@@ -2,7 +2,7 @@
 
 ## 本阶段目标
 
-将文档中的 **进程线程、服务控制管理器、RPC、经典 IPC** 与 ZirconOS 的 ALPC、SMSS/服务桩及对象管理对照（Roadmap Phase 5–6、8）。
+将文档中的 **进程线程、服务控制管理器、RPC、经典 IPC** 与 ZirconOSFluent 的 ALPC、SMSS/服务桩及对象管理对照（Roadmap Phase 5–6、8）。
 
 ## 参考文档（仓库内路径）
 
@@ -26,7 +26,7 @@
 - [ ] 列出 **服务控制管理器（SCM）** 状态机：`CreateService`、`StartService` 与 `services.exe` 启动链。
 - [ ] 对照 `ProcThread`，核对 **进程创建参数**（环境块、句柄继承）与当前 `EProcess` bring-up。
 - [ ] 将 **作业对象（Job）**、**进程组** 与安全沙箱（AppContainer）关联标注。
-- [ ] 评估 **命名管道（\\.\pipe）** 在 ZirconOS 命名空间中的表示（`\Device\NamedPipe` 类比）。
+- [ ] 评估 **命名管道（\\.\pipe）** 在 ZirconOSFluent 命名空间中的表示（`\Device\NamedPipe` 类比）。
 - [ ] 将 **本地 RPC / ncalrpc** 与 csrss / LSASS 通信模式做文献笔记（不要求实现）。
 - [ ] 记录 **线程池、线程局部存储** 与 PE TLS 目录的完整实现缺口（链 loader）。
 - [ ] 将 **COM 编组 / STG** 与 `com` 桩、`Stg` 文档标为 WinRT/COM 扩展线。

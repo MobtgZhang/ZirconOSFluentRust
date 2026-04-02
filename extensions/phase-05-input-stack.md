@@ -2,7 +2,7 @@
 
 ## 本阶段目标
 
-覆盖 **指针消息、触摸命中、注入、旧式触摸、键盘鼠标、TSF、高 DPI** 与 ZirconOS 当前 UEFI/内核输入管线及 Fluent 会话的对接（Roadmap Phase 10、14）。
+覆盖 **指针消息、触摸命中、注入、旧式触摸、键盘鼠标、TSF、高 DPI** 与 ZirconOSFluent 当前 UEFI/内核输入管线及 Fluent 会话的对接（Roadmap Phase 10、14）。
 
 ## 参考文档（仓库内路径）
 

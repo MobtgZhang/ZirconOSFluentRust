@@ -2,7 +2,7 @@
 
 ## 本阶段目标
 
-对齐 **PE 子系统、入口点、消息泵雏形、头文件与 64 位约定** 与 ZirconOS 加载器及用户态 API 桩（Roadmap Phase 7–8），为后续真 user32/消息循环打术语与行为基础。阅读材料仅作索引；实现说明用本仓库原创表述。
+对齐 **PE 子系统、入口点、消息泵雏形、头文件与 64 位约定** 与 ZirconOSFluent 加载器及用户态 API 桩（Roadmap Phase 7–8），为后续真 user32/消息循环打术语与行为基础。阅读材料仅作索引；实现说明用本仓库原创表述。
 
 ## 参考文档（仓库内路径）
 
@@ -25,7 +25,7 @@
 ## 实现 TODO：PE 与启动
 
 - [ ] 在文档或代码注释中固定 **GUI 子系统 PE** 与 `WinMain` / `wWinMain` 入口约定，与当前 `load_pe` bring-up 行为对照。
-- [ ] 梳理 `IMAGE_SUBSYSTEM_WINDOWS_GUI` 与控制台子系统差异，标注 ZirconOS 当前仅验证路径。
+- [ ] 梳理 `IMAGE_SUBSYSTEM_WINDOWS_GUI` 与控制台子系统差异，标注 ZirconOSFluent 当前仅验证路径。
 - [ ] 文档化 GUI 入口与 CRT/启动例程的期望关系（不要求一步实现完整 CRT）。
 - [ ] 列出「首个可运行 ring3 GUI 最小进程」所需：映像映射、用户栈、PEB/TEB、到达用户入口的最短依赖链。
 - [ ] 对照可选头与数据目录：重定位、导入、TLS、延迟导入、异常目录 — 标出已实现与未实现。

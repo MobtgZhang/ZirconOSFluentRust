@@ -18,7 +18,7 @@
 
 ## 实现 TODO
 
-- [ ] 将 **已知文件夹 ID（KNOWNFOLDERID）** 与 ZirconOS 虚拟路径（桌面、文档、回收站）对照表写入设计备注。
+- [ ] 将 **已知文件夹 ID（KNOWNFOLDERID）** 与 ZirconOSFluent 虚拟路径（桌面、文档、回收站）对照表写入设计备注。
 - [ ] 列出 **IShellFolder / IShellItem** 等最小接口集，用于未来 `explorer_view` 与 VFS 枚举对接。
 - [ ] 规划 **桌面图标视图**：列表/大图标与 `DefView` 行为的子集目标。
 - [ ] 将 **属性处理程序、列处理程序** 标为 Shell 扩展远期。
