@@ -8,7 +8,7 @@
 
 use crate::ob::namespace::NamespaceBuckets;
 use crate::ps::process::{EProcess, ProcessId};
-use core::sync::atomic::{AtomicU8, Ordering};
+use core::sync::atomic::{AtomicU64, AtomicU8, Ordering};
 
 /// Ordered steps for NT-style startup; callers execute when dependencies exist.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -160,13 +160,58 @@ pub fn smss_last_phase_tag() -> u8 {
 /// QEMU / CI: keep [`crate::subsystems::win32::csrss_host`] until a Ring-3 csrss image loads.
 pub const NT10_PHASE6_RING3_CSRSS_FALLBACK_TO_KERNEL_HOST: bool = true;
 
-/// Phase 6 scaffold: load `SystemRoot\\System32\\smss.exe` into a Ring-3 process. Returns [`Err`] until PE + CR3 user path is wired.
+static RING3_PLACEHOLDER_CR3: AtomicU64 = AtomicU64::new(0);
+
+/// CR3 allocated by [`try_register_ring3_placeholder_process`] (0 if none).
 #[must_use]
-pub fn try_launch_ring3_smss_from_vfs() -> Result<ProcessId, ()> {
-    if NT10_PHASE6_RING3_CSRSS_FALLBACK_TO_KERNEL_HOST {
+pub fn ring3_placeholder_cr3_phys() -> u64 {
+    RING3_PLACEHOLDER_CR3.load(Ordering::Relaxed)
+}
+
+/// Publish `cr3_phys` as the shared bring-up user CR3 when none is set yet, or succeed if it already matches.
+pub fn try_set_ring3_placeholder_cr3(cr3_phys: u64) -> Result<(), ()> {
+    if cr3_phys == 0 {
         return Err(());
     }
-    let _ = try_load_native_image_stub(SmssPhase::SystemProcess);
+    match RING3_PLACEHOLDER_CR3.compare_exchange(0, cr3_phys, Ordering::AcqRel, Ordering::Acquire) {
+        Ok(_) => Ok(()),
+        Err(v) if v == cr3_phys => Ok(()),
+        Err(_) => Err(()),
+    }
+}
+
+/// Allocates a user page table via [`crate::mm::uefi_user_cr3::build_uefi_first_user_cr3`] and records it for SMSS/ALPC bring-up.
+/// Does **not** load `smss.exe`; see [`try_launch_ring3_smss_from_vfs`].
+#[must_use]
+pub fn try_register_ring3_placeholder_process() -> Result<ProcessId, ()> {
+    #[cfg(all(target_arch = "x86_64", not(test)))]
+    {
+        if !crate::mm::phys::pfn_pool_initialized() {
+            return Err(());
+        }
+        if RING3_PLACEHOLDER_CR3.load(Ordering::Acquire) != 0 {
+            return Err(());
+        }
+        let cr3 = unsafe { crate::mm::uefi_user_cr3::build_uefi_first_user_cr3() }.ok_or(())?;
+        RING3_PLACEHOLDER_CR3.store(cr3, Ordering::Release);
+        let p = EProcess::new_bootstrap();
+        return Ok(p.pid);
+    }
+    #[cfg(any(not(target_arch = "x86_64"), test))]
+    {
+        Err(())
+    }
+}
+
+/// Phase 6 scaffold: prefer a real `smss.exe` load from VFS; otherwise register a Ring-3 CR3 placeholder when on bare-metal x86_64.
+#[must_use]
+pub fn try_launch_ring3_smss_from_vfs() -> Result<ProcessId, ()> {
+    if try_load_native_image_stub(SmssPhase::SystemProcess) {
+        return Ok(EProcess::new_bootstrap().pid);
+    }
+    if NT10_PHASE6_RING3_CSRSS_FALLBACK_TO_KERNEL_HOST {
+        return try_register_ring3_placeholder_process();
+    }
     Err(())
 }
 
@@ -182,6 +227,7 @@ mod phase6_tests {
 
     #[test]
     fn ring3_smss_and_alpc_stubs_return_err() {
+        assert!(try_register_ring3_placeholder_process().is_err());
         assert!(try_launch_ring3_smss_from_vfs().is_err());
         assert!(try_smss_alpc_start_csrss_stub(ProcessId(1)).is_err());
     }
