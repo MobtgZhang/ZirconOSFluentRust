@@ -135,6 +135,16 @@ pub fn yield_message_wait() {
     }
 }
 
+/// Cooperative “block” for message waits: run any queued BSP DPCs (timer may enqueue work), then
+/// [`yield_message_wait`]. Single-thread bring-up still progresses without a tight `spin_loop` only.
+pub fn block_cooperative_idle() {
+    #[cfg(target_arch = "x86_64")]
+    {
+        crate::ke::dpc::bsp_drain_pending();
+    }
+    yield_message_wait();
+}
+
 /// x86_64: PIC + PIT + IDT vector 32 + `sti`. Other arches: [`yield_stub`] only.
 pub fn bringup_timer_and_idle<H: Hal + ?Sized>(hal: &H) {
     yield_stub();
