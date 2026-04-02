@@ -3,6 +3,10 @@
 use super::phys::pfn_bringup_alloc;
 use super::vad::{PageProtect, VadEntry, VadKind};
 use crate::arch::x86_64::paging::pte_with_nx;
+use crate::ke::spinlock::SpinLock;
+
+/// Serialize PTE walks with SMP TLB IPI ([`crate::arch::x86_64::tlb::shootdown_range_all_cpus`]).
+static PT_WALK_LOCK: SpinLock<()> = SpinLock::new(());
 
 /// Standard x86_64 paging flags (low 12 bits + NX).
 #[derive(Clone, Copy, Debug)]
@@ -113,6 +117,7 @@ unsafe fn ensure_next_level(parent_phys: u64, index: usize) -> Result<u64, MapEr
 /// # Safety
 /// `cr3_phys` must be the active PML4 physical base; caller must invalidate TLB for `va` if required.
 pub unsafe fn map_4k(cr3_phys: u64, va: u64, pa: u64, flags: PageFlags) -> Result<(), MapError> {
+    let _g = PT_WALK_LOCK.lock();
     if va & 0xFFF != 0 || pa & 0xFFF != 0 {
         return Err(MapError::InvalidVirtualAddress);
     }
@@ -130,6 +135,7 @@ pub unsafe fn map_4k(cr3_phys: u64, va: u64, pa: u64, flags: PageFlags) -> Resul
 /// # Safety
 /// Same as [`map_4k`].
 pub unsafe fn unmap_4k(cr3_phys: u64, va: u64) -> Result<u64, MapError> {
+    let _g = PT_WALK_LOCK.lock();
     let pml4 = cr3_phys;
     let pdpt_e = read_pte(pml4 + pml4_i(va) as u64 * 8);
     if (pdpt_e & 1) == 0 {
@@ -238,6 +244,40 @@ fn protect_to_flags(p: PageProtect, kind: VadKind) -> PageFlags {
         nx,
         write_combining: false,
     }
+}
+
+/// Map `phys_frames[i]` at `start_va + i * 4096` for each index while `va < e.end_va`.
+///
+/// # Safety
+/// Same as [`map_4k`]. `e` supplies protection / present semantics via [`page_flags_for_vad_entry`].
+pub unsafe fn map_committed_range_to_pfns(
+    cr3_phys: u64,
+    start_va: u64,
+    phys_frames: &[u64],
+    e: &VadEntry,
+) -> Result<(), MapError> {
+    if phys_frames.is_empty() {
+        return Ok(());
+    }
+    let map_user = start_va < 0x0000_8000_0000_0000;
+    let flags = page_flags_for_vad_entry(e, map_user);
+    if !flags.present {
+        return Ok(());
+    }
+    for (i, &pa) in phys_frames.iter().enumerate() {
+        let va = start_va.saturating_add((i as u64).saturating_mul(4096));
+        if va >= e.end_va {
+            break;
+        }
+        if pa & 0xFFF != 0 {
+            return Err(MapError::InvalidVirtualAddress);
+        }
+        map_4k(cr3_phys, va, pa, flags)?;
+    }
+    let mapped_end = start_va.saturating_add((phys_frames.len() as u64).saturating_mul(4096));
+    let flush_end = mapped_end.min(e.end_va);
+    crate::arch::x86_64::tlb::shootdown_range(start_va, flush_end);
+    Ok(())
 }
 
 /// Best-effort: map each 4 KiB page in the VAD range (bring-up; ignores demand-zero / file I/O).

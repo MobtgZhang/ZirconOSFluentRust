@@ -14,6 +14,14 @@ pub const USER_RING3_BRINGUP_CODE: [u8; 8] = [
 /// Legacy 4-byte sequence (`syscall` + spin) for paths that pre-map the whole 2 MiB window.
 pub const USER_SYSCALL_SMOKE_CODE: [u8; 4] = [0x0f, 0x05, 0xeb, 0xfe];
 
+/// UEFI / kmain serial probe: `mov rax, 0x5ED` then `syscall` then spin. Handler prints
+/// `ZR_UEFI_R3_SYSCALL_PROBE_OK` via [`crate::arch::x86_64::syscall::ZR_UEFI_R3_PROBE_SYSCALL`].
+pub const USER_RING3_UEFI_PROBE_SYSCALL: [u8; 12] = [
+    0x48, 0xC7, 0xC0, 0xED, 0x05, 0, 0, 0, // mov rax, 0x5ED
+    0x0F, 0x05, // syscall
+    0xEB, 0xFE, // jmp short $ (spin)
+];
+
 /// Ring-3 demo: `mov rax, 0x102` ([`crate::subsystems::win32::msg_dispatch::ZR_SYSCALL_GET_MESSAGE`]) then `syscall` then tight spin.
 /// **ABI** (ZirconOS bring-up, not Windows): `%rax` = syscall number; `%rdi`..`%r9` = args per [`crate::arch::x86_64::syscall`] entry.
 pub const USER_RING3_GETMESSAGE_SYSCALL_DEMO: [u8; 14] = [

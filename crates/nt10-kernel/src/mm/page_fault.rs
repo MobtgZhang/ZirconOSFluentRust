@@ -5,6 +5,7 @@ use core::sync::atomic::{AtomicU64, Ordering};
 use super::pfn;
 use super::phys::{pfn_bringup_alloc, pfn_bringup_free};
 use super::pt;
+use super::section::SectionObject;
 use super::vad::{PageProtect, VadKind, VadTable};
 use crate::arch::x86_64::paging::read_cr3;
 
@@ -42,10 +43,72 @@ pub fn try_dispatch_page_fault(cr2: u64, err: u64) -> u64 {
         }
         return 0;
     }
+    if try_demand_file_mapped_page(cr2, err, vad) {
+        return 1;
+    }
     if try_demand_zero_page(cr2, err, vad) {
         return 1;
     }
     0
+}
+
+fn try_demand_file_mapped_page(cr2: u64, err: u64, vad: &VadTable) -> bool {
+    let _ = err;
+    let va = cr2 & !0xFFFu64;
+    if !canonical_user_va(va) {
+        return false;
+    }
+    let Some(entry) = vad.find_by_va(va) else {
+        return false;
+    };
+    if !entry.committed || matches!(entry.kind, VadKind::Reserve) {
+        return false;
+    }
+    if entry.kind != VadKind::Mapped {
+        return false;
+    }
+    let Some(sec_nn) = entry.section else {
+        return false;
+    };
+    let sec = unsafe { &*sec_nn.as_ptr().cast::<SectionObject>() };
+    if !matches!(
+        &sec.backing,
+        crate::mm::section::SectionBacking::FileBackedStub { .. }
+    ) {
+        return false;
+    }
+    let cr3 = read_cr3();
+    if unsafe { pt::query_pte(cr3, va) }
+        .map(|pte| pte & 1 != 0)
+        .unwrap_or(false)
+    {
+        return false;
+    }
+    let page_off = va.saturating_sub(entry.start_va);
+    let file_off = match &sec.backing {
+        crate::mm::section::SectionBacking::FileBackedStub { offset, .. } => offset.saturating_add(page_off),
+        _ => return false,
+    };
+    let Some(pa) = pfn_bringup_alloc() else {
+        return false;
+    };
+    let page = unsafe {
+        core::slice::from_raw_parts_mut(pa as *mut u8, super::PAGE_SIZE as usize)
+    };
+    page.fill(0);
+    let _ = sec.read_file_backed_page(file_off, page);
+    let mut flags = pt::page_flags_for_vad_entry(entry, true);
+    flags.present = true;
+    unsafe {
+        if pt::map_4k(cr3, va, pa, flags).is_err() {
+            pfn_bringup_free(pa);
+            return false;
+        }
+        crate::arch::x86_64::tlb::invlpg(va);
+    }
+    pfn::pfn_set_reference_count(pa, 1);
+    crate::hal::x86_64::serial::write_line(b"nt10-kernel: file-backed demand #PF handled\r\n");
+    true
 }
 
 #[inline]

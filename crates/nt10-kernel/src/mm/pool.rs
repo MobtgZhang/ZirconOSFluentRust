@@ -1,8 +1,11 @@
 //! NonPagedPool-style slab (power-of-two total chunk sizes including 8-byte header).
+//!
+//! [`refill_class`] already **packs multiple small chunks into one 4 KiB PFN**; for large contiguous
+//! off-screen or Section buffers use [`alloc_pfn_page_slab`] / [`free_pfn_page_slab`].
 
 use core::sync::atomic::{AtomicUsize, Ordering};
 
-use super::phys::pfn_bringup_alloc;
+use super::phys::{pfn_bringup_alloc, pfn_bringup_free};
 use crate::sync::spinlock::SpinLock;
 
 /// Total bytes per chunk (8-byte header + payload).
@@ -115,4 +118,37 @@ pub fn ex_allocate_paged_pool_with_tag(size: usize, tag: u32) -> *mut u8 {
 /// PagedPool free alias.
 pub fn ex_free_paged_pool_with_tag(ptr: *mut u8, tag: u32) {
     ex_free_pool_with_tag(ptr, tag);
+}
+
+/// One zeroed 4 KiB physical page from the PFN pool (explicit free via [`free_pfn_page_slab`]).
+#[must_use]
+pub fn alloc_pfn_page_slab() -> Option<u64> {
+    let p = pfn_bringup_alloc()?;
+    unsafe {
+        core::ptr::write_bytes(p as *mut u8, 0, 4096);
+    }
+    Some(p)
+}
+
+/// Returns a page obtained from [`alloc_pfn_page_slab`].
+pub fn free_pfn_page_slab(pa: u64) {
+    if pa != 0 {
+        pfn_bringup_free(pa);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn pfn_page_slab_round_trip() {
+        let Some(p) = alloc_pfn_page_slab() else {
+            return;
+        };
+        unsafe {
+            *(p as *mut u8) = 0xAB;
+        }
+        free_pfn_page_slab(p);
+    }
 }

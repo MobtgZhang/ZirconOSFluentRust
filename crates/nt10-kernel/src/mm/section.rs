@@ -8,19 +8,24 @@ use super::user_va::{USER_BRINGUP_STACK_TOP, USER_BRINGUP_VA};
 use super::vad::{PageProtect, VadEntry, VadKind, VadTable};
 use super::PAGE_SIZE;
 
+/// Max 4 KiB frames tracked inline per anonymous section (no `alloc` global allocator on bare metal).
+pub const SECTION_ANONYMOUS_PAGE_CAP: usize = 256;
+
 /// Backing store for a section (clean-room layout).
 #[derive(Clone, Debug)]
 pub enum SectionBacking {
     /// Placeholder until per-PFN lists are wired for anonymous sections.
     None,
-    /// Physical frames for an anonymous section (small inline pool).
+    /// Physical frames for an anonymous section (inline array; cap [`SECTION_ANONYMOUS_PAGE_CAP`]).
     AnonymousPages {
-        phys: [u64; 32],
+        phys: [u64; SECTION_ANONYMOUS_PAGE_CAP],
         count: usize,
     },
-    /// File-backed stub (handle is opaque).
+    /// FAT32 root short-name file on a bring-up [`crate::fs::vfs::VfsTable`] mount.
     FileBackedStub {
-        file_handle: u64,
+        mount_slot: u8,
+        root_name11: [u8; 11],
+        /// Byte offset in the file that maps to VAD `start_va`.
         offset: u64,
         size: u64,
     },
@@ -91,7 +96,7 @@ impl SectionObject {
                 Ok(())
             }
             SectionBacking::None => {
-                let mut phys = [0u64; 32];
+                let mut phys = [0u64; SECTION_ANONYMOUS_PAGE_CAP];
                 let mut count = 0usize;
                 for _ in 0..pages {
                     if count >= phys.len() {
@@ -106,6 +111,31 @@ impl SectionObject {
             SectionBacking::FileBackedStub { .. } => Err(()),
         }
     }
+
+    /// Read up to `page.len()` bytes from the backing file at absolute `file_offset` (demand paging).
+    pub fn read_file_backed_page(&self, file_offset: u64, page: &mut [u8]) -> Result<usize, ()> {
+        let SectionBacking::FileBackedStub {
+            mount_slot,
+            root_name11,
+            offset: map_base,
+            size,
+        } = &self.backing
+        else {
+            return Err(());
+        };
+        if file_offset < *map_base || file_offset >= map_base.saturating_add(*size) {
+            return Ok(0);
+        }
+        let vfs = crate::fs::vfs::vfs_bringup_ptr().ok_or(())?;
+        let vfs = unsafe { vfs.as_ref() };
+        crate::fs::vfs::vfs_read_fat32_root_file_partial(
+            vfs,
+            *mount_slot as usize,
+            root_name11,
+            file_offset,
+            page,
+        )
+    }
 }
 
 /// Registers a [`VadEntry`] for the built-in user region using `section` size and protection.
@@ -114,11 +144,20 @@ pub fn install_bringup_section_vad(vad: &mut VadTable, section: &SectionObject) 
         .maximum_size
         .min(USER_BRINGUP_STACK_TOP.saturating_sub(USER_BRINGUP_VA));
     let end = USER_BRINGUP_VA.saturating_add(span);
+    let has_anon_pfns = matches!(
+        &section.backing,
+        SectionBacking::AnonymousPages { count, .. } if *count > 0
+    );
+    let protect = if has_anon_pfns {
+        PageProtect::ReadWrite
+    } else {
+        PageProtect::ReadOnly
+    };
     let entry = VadEntry::new_range(
         USER_BRINGUP_VA,
         end,
         VadKind::Mapped,
-        PageProtect::ReadOnly,
+        protect,
         true,
     );
     vad.insert(entry)?;
@@ -126,11 +165,22 @@ pub fn install_bringup_section_vad(vad: &mut VadTable, section: &SectionObject) 
         let cr3 = crate::arch::x86_64::paging::read_cr3();
         unsafe {
             if let Some(e) = vad.find_by_va(USER_BRINGUP_VA) {
-                let _ = super::pt::apply_vad_to_page_tables(cr3, e);
+                match &section.backing {
+                    SectionBacking::AnonymousPages { phys, count } if *count > 0 => {
+                        let _ = super::pt::map_committed_range_to_pfns(
+                            cr3,
+                            USER_BRINGUP_VA,
+                            &phys[..*count],
+                            e,
+                        );
+                    }
+                    _ => {
+                        let _ = super::pt::apply_vad_to_page_tables(cr3, e);
+                    }
+                }
             }
         }
     }
-    let _ = section;
     Ok(())
 }
 
