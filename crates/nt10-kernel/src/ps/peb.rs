@@ -55,6 +55,12 @@ impl PebRef {
 }
 
 /// Thread environment block reference.
+///
+/// ## Bring-up kernel shadow (Phase 3)
+///
+/// The executive keeps the **current desktop** association for the running thread in
+/// [`crate::subsystems::win32::msg_dispatch`] (`thread_bind_desktop` / `thread_desktop_ptr`).
+/// A future ring-3 TEB field mirroring this would be documented here when user-mode layouts are wired.
 #[derive(Clone, Copy, Debug)]
 pub struct TebRef {
     pub user_va: u64,

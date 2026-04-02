@@ -56,7 +56,7 @@ impl EProcess {
         self.handles.get_raw(h)
     }
 
-    /// Closes a handle slot (bring-up: no typed object destructor yet).
+    /// Closes a handle slot; managed [`crate::ob::object::ObjectHeader`] bodies run typed delete.
     pub fn close_handle(&mut self, h: KernelHandle) -> Option<NonNull<()>> {
         self.handles.close_raw(h)
     }
