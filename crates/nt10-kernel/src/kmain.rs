@@ -39,8 +39,14 @@ pub unsafe extern "C" fn kmain_entry(boot: *const ZirconBootInfo) -> ! {
 
     unsafe {
         idt::init();
+        idt::set_interrupt_gate(14, crate::arch::x86_64::isr::page_fault_entry_addr());
     }
-    hal.debug_write(b"nt10-kernel: IDT loaded\r\n");
+    hal.debug_write(b"nt10-kernel: IDT loaded (#PF vector 14)\r\n");
+
+    unsafe {
+        paging::enable_nxe();
+    }
+    hal.debug_write(b"nt10-kernel: EFER.NXE enabled\r\n");
 
     unsafe {
         paging::init_low_identity();
@@ -77,7 +83,7 @@ pub unsafe extern "C" fn kmain_entry(boot: *const ZirconBootInfo) -> ! {
                 let mut ranges = [crate::mm::boot_mem::UsablePhysRange {
                     base: 0,
                     page_count: 0,
-                }; 8];
+                }; crate::mm::phys::USABLE_RANGE_SLOTS];
                 let nr = unsafe {
                     crate::mm::boot_mem::usable_conventional_ranges(info, &mut ranges)
                 };
@@ -118,6 +124,10 @@ pub unsafe extern "C" fn kmain_entry(boot: *const ZirconBootInfo) -> ! {
                         let _ = crate::drivers::video::display_mgr::register_uefi_framebuffer_stub(
                             &info.framebuffer,
                         );
+                        if unsafe { crate::mm::high_half::try_map_uefi_framebuffer_wc(info) }.is_ok()
+                        {
+                            hal.debug_write(b"nt10-kernel: framebuffer WC vmap at high VA OK\r\n");
+                        }
                         hal.debug_write(b"nt10-kernel: desktop shell painted (UEFI bring-up)\r\n");
                         uefi_desktop_poll_fb = Some(info.framebuffer);
                     }
@@ -145,6 +155,18 @@ pub unsafe extern "C" fn kmain_entry(boot: *const ZirconBootInfo) -> ! {
                         crate::drivers::video::display_mgr::FramebufferHandoffError::StrideTooSmall,
                     ) => {
                         hal.debug_write(b"nt10-kernel: GOP handoff rejected (stride)\r\n");
+                    }
+                }
+                #[cfg(target_arch = "x86_64")]
+                {
+                    if unsafe {
+                        crate::mm::high_half::try_uefi_add_kernel_direct_map_mirror_and_switch()
+                    }
+                    .is_ok()
+                    {
+                        hal.debug_write(
+                            b"nt10-kernel: PML4[256] high-half 512MiB mirror + CR3 switch OK\r\n",
+                        );
                     }
                 }
             }
@@ -197,6 +219,7 @@ pub unsafe extern "C" fn kmain_entry(boot: *const ZirconBootInfo) -> ! {
 
             let mut proc = crate::ps::process::EProcess::new_bootstrap();
             let _ = crate::mm::bringup_user::register_bringup_vad(&mut proc.vad_root);
+            crate::mm::page_fault::set_page_fault_vad_table(core::ptr::addr_of!(proc.vad_root));
             proc.peb = crate::ps::peb::PebRef::bringup_smoke();
 
             let stub = crate::ke::sched::ThreadStub::new(8);

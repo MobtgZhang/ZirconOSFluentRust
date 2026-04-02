@@ -24,4 +24,5 @@ pub mod rtl;
 pub mod se;
 pub mod servers;
 pub mod subsystems;
+pub mod sync;
 pub mod vbs;

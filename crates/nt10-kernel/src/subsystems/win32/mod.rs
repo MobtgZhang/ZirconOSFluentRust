@@ -10,7 +10,6 @@ pub mod shell_bringup;
 pub mod dwrite;
 pub mod exec;
 pub mod gdi32;
-pub mod powershell;
 pub mod subsystem;
 pub mod windowing;
 pub mod user32;

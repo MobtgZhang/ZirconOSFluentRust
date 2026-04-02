@@ -71,12 +71,16 @@ fn sanitize_ps2_mouse_buttons(buttons: u8, dx: i16, dy: i16, prev_l: bool, prev_
 /// **Must be large:** `xhci_init_hid` can run for a very long time or appear hung; if it runs on poll 1 while the
 /// PS/2 queue was empty, the main loop never reaches another poll and the pointer stays frozen.
 /// Set to `0` only when you know USB init returns quickly on your machine.
+///
+/// See `docs/cn/Build-Test-Coding.md` (UEFI 桌面会话): compile with `NT10_SKIP_XHCI=1` to force PS/2-only, or tune this constant.
 #[cfg(target_arch = "x86_64")]
-pub const XHCI_INIT_AFTER_POLLS: u32 = 1_000_000;
+pub const XHCI_INIT_AFTER_POLLS: u32 = 100_000;
 
-/// If `true`, never call `xhci_init_hid` (PS/2 keyboard/mouse only). Use when USB bring-up blocks your firmware.
+/// If `true`, never call `xhci_init_hid` (PS/2 keyboard/mouse only). Set environment variable
+/// **`NT10_SKIP_XHCI`** to any value when running `cargo build` / `cargo check` so `option_env!` picks it up
+/// (e.g. `NT10_SKIP_XHCI=1 cargo build ...`). See `docs/cn/Build-Test-Coding.md`.
 #[cfg(target_arch = "x86_64")]
-pub const SKIP_XHCI_INIT: bool = false;
+pub const SKIP_XHCI_INIT: bool = option_env!("NT10_SKIP_XHCI").is_some();
 
 /// Cursor XOR/save-under buffer — kept in BSS, not on the kernel stack (UEFI entry stack is small).
 const CURSOR_SAVE_BYTES: usize = (shell::POINTER_CURSOR_SIZE as usize)
@@ -111,7 +115,7 @@ pub fn run_uefi_desktop_poll_session<H: Hal + ?Sized>(hal: &H, fb: FramebufferIn
     {
         hal.debug_write(b"nt10-mouse: USB xHCI init after poll tick ");
         debug_write_usize_dec(hal, XHCI_INIT_AFTER_POLLS as usize);
-        hal.debug_write(b" (PS/2-only until then; set SKIP_XHCI_INIT or change XHCI_INIT_AFTER_POLLS in session.rs)\r\n");
+        hal.debug_write(b" (PS/2-only until then; set env NT10_SKIP_XHCI when building, or tune XHCI_INIT_AFTER_POLLS)\r\n");
     }
     #[cfg(not(target_arch = "x86_64"))]
     hal.debug_write(b"nt10-mouse: USB xHCI path not built for this arch\r\n");
