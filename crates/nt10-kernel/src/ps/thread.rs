@@ -1,5 +1,8 @@
 //! ETHREAD — per-thread kernel state (minimal; ties into [`crate::ke::sched::ThreadId`]).
 //!
+//! **Bring-up:** `tid` matches [`crate::ke::sched::ThreadStub::id`] when both are created together in kmain;
+//! the scheduler’s RR queue is still stub-level until real thread state is switched in-kernel.
+//!
 //! Win32 message routing: per-tid desktop/TEB live in [`crate::subsystems::win32::msg_dispatch`]
 //! after [`crate::subsystems::win32::msg_dispatch::apply_ethread_routing`] (or
 //! `thread_bind_desktop` / `thread_bind_win32`). Fields here mirror that for bring-up introspection.

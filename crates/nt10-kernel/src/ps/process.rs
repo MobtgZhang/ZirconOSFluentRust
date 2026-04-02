@@ -1,4 +1,8 @@
 //! EPROCESS / KPROCESS placeholders.
+//!
+//! **Bring-up alignment:** [`EProcess::vad_root`] is what [`crate::mm::page_fault::set_page_fault_vad_table`] should
+//! track for user faults. Thread scheduling uses [`crate::ke::sched::ThreadStub`] / [`crate::ps::thread::EThread`]
+//! registered from kmain; full kernel relocate and production process teardown are roadmap gaps.
 
 use crate::mm::vad::VadTable;
 use crate::ob::handle::{HandleTable, KernelHandle};
