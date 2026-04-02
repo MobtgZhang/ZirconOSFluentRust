@@ -68,6 +68,48 @@ impl AlpcDuplexLink {
     }
 }
 
+/// Copy `src` into `remote_user_dest` while the CPU uses `remote_cr3` (x86_64 bring-up).
+///
+/// `src` is read under the **current** CR3; data is staged in the kernel bounce buffer, then copied
+/// to the remote VA after a temporary `CR3` switch. Caller must ensure `remote_user_dest` is writable
+/// in the remote map and that the bounce lock is not contended across CPUs.
+///
+/// Unavailable in `cfg(test)` host builds (returns [`Err`]); use [`post_cross_address_space`] for bounce-only tests.
+#[cfg(all(target_arch = "x86_64", not(test)))]
+pub fn post_cross_address_space_into_remote_va(
+    remote_cr3: u64,
+    remote_user_dest: u64,
+    src: &[u8],
+) -> Result<(), ()> {
+    if src.is_empty() {
+        return Ok(());
+    }
+    if src.len() > CROSS_AS_BOUNCE_CAP || remote_cr3 == 0 {
+        return Err(());
+    }
+    let mut g = CROSS_AS_BOUNCE.lock();
+    g[..src.len()].copy_from_slice(src);
+    let n = src.len();
+    let p = g.as_mut_ptr();
+    unsafe {
+        let old = crate::arch::x86_64::paging::read_cr3();
+        crate::arch::x86_64::paging::write_cr3(remote_cr3);
+        core::sync::atomic::fence(core::sync::atomic::Ordering::SeqCst);
+        core::ptr::copy_nonoverlapping(p, remote_user_dest as *mut u8, n);
+        crate::arch::x86_64::paging::write_cr3(old);
+    }
+    Ok(())
+}
+
+#[cfg(any(not(target_arch = "x86_64"), test))]
+pub fn post_cross_address_space_into_remote_va(
+    _remote_cr3: u64,
+    _remote_user_dest: u64,
+    _src: &[u8],
+) -> Result<(), ()> {
+    Err(())
+}
+
 /// Copy `src` into a kernel bounce buffer when the target matches the running address space.
 ///
 /// - `target_cr3 == 0`: always accepted (bring-up “current / kernel” path).
