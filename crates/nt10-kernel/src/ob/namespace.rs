@@ -129,6 +129,22 @@ impl NamespaceBuckets {
         }
         self.by_session[sid].remove(name)
     }
+
+    /// Like [`Self::insert_session_path`], but denies cross-session namespace writes unless the path session matches
+    /// [`crate::se::token::SecurityToken::session_id`] (bring-up DAC hook).
+    pub fn insert_session_path_for_token(
+        &mut self,
+        token: &crate::se::token::SecurityToken,
+        path: &[u8],
+        object: NonNull<()>,
+    ) -> Result<(), ()> {
+        let rest = strip_sessions_subpath(path).ok_or(())?;
+        let (sid, _) = parse_session_id_and_name(rest).ok_or(())?;
+        if sid as u32 != token.session_id {
+            return Err(());
+        }
+        self.insert_session_path(path, object)
+    }
 }
 
 /// Split `WinSta0\Default` into `WinSta0` + `Some(Default)`; `WinSta0` → `None` desktop.
@@ -178,6 +194,20 @@ pub fn classify_path(prefix: &[u8]) -> PathRoot {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::se::token::SecurityToken;
+
+    #[test]
+    fn insert_session_path_for_token_denies_cross_session() {
+        let mut ns = NamespaceBuckets::new();
+        let tok0 = SecurityToken::system_bootstrap();
+        let p = NonNull::new(0x1000usize as *mut ()).unwrap();
+        assert!(ns
+            .insert_session_path_for_token(&tok0, br"\Sessions\0\Obj", p)
+            .is_ok());
+        assert!(ns
+            .insert_session_path_for_token(&tok0, br"\Sessions\1\Other", p)
+            .is_err());
+    }
 
     #[test]
     fn multi_session_paths() {

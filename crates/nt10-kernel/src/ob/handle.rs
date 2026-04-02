@@ -2,6 +2,8 @@
 
 use core::ptr::NonNull;
 
+use crate::ob::object::ObjectTypeIndex;
+
 /// Opaque kernel object reference; not a Win32 `HANDLE` value.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct KernelHandle(pub u32);
@@ -60,6 +62,19 @@ impl HandleTable {
             return None;
         }
         self.slots[idx]
+    }
+
+    /// If the slot points at a managed [`crate::ob::object::ObjectHeader`], return its type index.
+    #[must_use]
+    pub fn object_type_index(&self, h: KernelHandle) -> Option<ObjectTypeIndex> {
+        let p = self.get_raw(h)?;
+        let hdr = p.cast::<crate::ob::object::ObjectHeader>();
+        let header = unsafe { hdr.as_ref() };
+        if header.is_managed_object() {
+            Some(header.type_index)
+        } else {
+            None
+        }
     }
 
     /// Decrements reference count; clears slot when it reaches zero. Returns pointer on final release.

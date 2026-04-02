@@ -96,6 +96,19 @@ pub fn ob_descriptor_for_type(ty: ObjectTypeIndex) -> ObTypeDescriptor {
     }
 }
 
+/// Type indices that map to non-empty [`ObTypeDescriptor`] in bring-up (extend as new objects gain procedures).
+pub const OB_BRINGUP_TYPED_INDICES: &[ObjectTypeIndex] = &[
+    ObjectTypeIndex::WINDOW_STATION,
+    ObjectTypeIndex::DESKTOP,
+];
+
+/// Enumerate bring-up types and their descriptors (single entry point for future full type tables).
+pub fn ob_for_each_bringup_type(mut f: impl FnMut(ObjectTypeIndex, ObTypeDescriptor)) {
+    for &ty in OB_BRINGUP_TYPED_INDICES {
+        f(ty, ob_descriptor_for_type(ty));
+    }
+}
+
 /// If `ptr` points at a managed [`ObjectHeader`], run `delete_procedure`.
 ///
 /// # Safety
@@ -173,6 +186,17 @@ mod tests {
     use alloc::boxed::Box as AllocBox;
     use core::ptr::NonNull;
     use core::sync::atomic::Ordering;
+
+    #[test]
+    fn bringup_foreach_lists_winsta_desktop_with_delete() {
+        let mut with_delete = 0u32;
+        ob_for_each_bringup_type(|_ty, d| {
+            if d.delete_procedure.is_some() {
+                with_delete += 1;
+            }
+        });
+        assert_eq!(with_delete, 2);
+    }
 
     #[test]
     fn delete_runs_once_on_last_handle_close_path() {
