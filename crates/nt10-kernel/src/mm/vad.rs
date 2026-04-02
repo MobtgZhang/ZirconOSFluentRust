@@ -1,8 +1,8 @@
-//! Virtual Address Descriptors — fixed-capacity table until AVL lands.
-//!
-//! User addresses should stay inside [`crate::mm::user_va`] bounds once user mode is enabled.
+//! Virtual Address Descriptors — non-overlapping intervals in an array-backed AVL tree.
 
-const MAX_VADS: usize = 64;
+use core::ptr::NonNull;
+
+const MAX_NODES: usize = 64;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum VadKind {
@@ -11,49 +11,291 @@ pub enum VadKind {
     Reserve,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PageProtect {
+    NoAccess,
+    ReadOnly,
+    ReadWrite,
+    ExecuteRead,
+    ExecuteReadWrite,
+    WriteCopy,
+}
+
 #[derive(Clone, Copy, Debug)]
 pub struct VadEntry {
     pub start_va: u64,
     pub end_va: u64,
     pub kind: VadKind,
+    pub protect: PageProtect,
+    pub committed: bool,
+    pub section: Option<NonNull<()>>,
 }
 
-/// Per-process region list (bring-up; no tree balancing yet).
+impl VadEntry {
+    #[must_use]
+    pub const fn new_range(
+        start_va: u64,
+        end_va: u64,
+        kind: VadKind,
+        protect: PageProtect,
+        committed: bool,
+    ) -> Self {
+        Self {
+            start_va,
+            end_va,
+            kind,
+            protect,
+            committed,
+            section: None,
+        }
+    }
+}
+
+struct Node {
+    key: VadEntry,
+    left: i16,
+    right: i16,
+    height: i8,
+    in_use: bool,
+}
+
+impl Node {
+    const fn empty() -> Self {
+        Self {
+            key: VadEntry {
+                start_va: 0,
+                end_va: 0,
+                kind: VadKind::Reserve,
+                protect: PageProtect::NoAccess,
+                committed: false,
+                section: None,
+            },
+            left: -1,
+            right: -1,
+            height: 0,
+            in_use: false,
+        }
+    }
+}
+
+/// Per-process VAD AVL (fixed pool).
 pub struct VadTable {
-    entries: [Option<VadEntry>; MAX_VADS],
-    count: usize,
+    nodes: [Node; MAX_NODES],
+    root: i16,
 }
 
 impl VadTable {
     pub const fn new() -> Self {
-        const NONE: Option<VadEntry> = None;
+        const E: Node = Node::empty();
         Self {
-            entries: [NONE; MAX_VADS],
-            count: 0,
+            nodes: [E; MAX_NODES],
+            root: -1,
         }
     }
 
-    pub fn insert(&mut self, e: VadEntry) -> Result<(), ()> {
-        if self.count >= MAX_VADS {
+    fn alloc_slot(&mut self) -> Option<i16> {
+        for i in 0..MAX_NODES {
+            if !self.nodes[i].in_use {
+                self.nodes[i].in_use = true;
+                self.nodes[i].left = -1;
+                self.nodes[i].right = -1;
+                self.nodes[i].height = 1;
+                return Some(i as i16);
+            }
+        }
+        None
+    }
+
+    fn height(&self, i: i16) -> i8 {
+        if i < 0 || !self.nodes[i as usize].in_use {
+            0
+        } else {
+            self.nodes[i as usize].height
+        }
+    }
+
+    fn update_height(&mut self, i: i16) {
+        if i < 0 {
+            return;
+        }
+        let l = self.nodes[i as usize].left;
+        let r = self.nodes[i as usize].right;
+        self.nodes[i as usize].height = 1 + self.height(l).max(self.height(r));
+    }
+
+    fn balance_factor(&self, i: i16) -> i8 {
+        if i < 0 {
+            0
+        } else {
+            self.height(self.nodes[i as usize].left) - self.height(self.nodes[i as usize].right)
+        }
+    }
+
+    fn rotate_right(&mut self, y: i16) -> i16 {
+        let x = self.nodes[y as usize].left;
+        let t2 = self.nodes[x as usize].right;
+        self.nodes[x as usize].right = y;
+        self.nodes[y as usize].left = t2;
+        self.update_height(y);
+        self.update_height(x);
+        x
+    }
+
+    fn rotate_left(&mut self, x: i16) -> i16 {
+        let y = self.nodes[x as usize].right;
+        let t2 = self.nodes[y as usize].left;
+        self.nodes[y as usize].left = x;
+        self.nodes[x as usize].right = t2;
+        self.update_height(x);
+        self.update_height(y);
+        y
+    }
+
+    fn insert_rec(&mut self, root: i16, key: VadEntry) -> Result<i16, ()> {
+        if root < 0 {
+            let i = self.alloc_slot().ok_or(())?;
+            self.nodes[i as usize].key = key;
+            return Ok(i);
+        }
+        let nk = self.nodes[root as usize].key.start_va;
+        if key.start_va < nk {
+            let l = self.nodes[root as usize].left;
+            let nl = self.insert_rec(l, key)?;
+            self.nodes[root as usize].left = nl;
+        } else if key.start_va > nk {
+            let r = self.nodes[root as usize].right;
+            let nr = self.insert_rec(r, key)?;
+            self.nodes[root as usize].right = nr;
+        } else {
             return Err(());
         }
-        self.entries[self.count] = Some(e);
-        self.count += 1;
+        self.update_height(root);
+        let bf = self.balance_factor(root);
+        if bf > 1 && key.start_va < self.nodes[self.nodes[root as usize].left as usize].key.start_va {
+            return Ok(self.rotate_right(root));
+        }
+        if bf > 1 && key.start_va > self.nodes[self.nodes[root as usize].left as usize].key.start_va {
+            let l = self.nodes[root as usize].left;
+            let rotated = self.rotate_left(l);
+            self.nodes[root as usize].left = rotated;
+            return Ok(self.rotate_right(root));
+        }
+        if bf < -1 && key.start_va > self.nodes[self.nodes[root as usize].right as usize].key.start_va {
+            return Ok(self.rotate_left(root));
+        }
+        if bf < -1 && key.start_va < self.nodes[self.nodes[root as usize].right as usize].key.start_va {
+            let r = self.nodes[root as usize].right;
+            let rotated = self.rotate_right(r);
+            self.nodes[root as usize].right = rotated;
+            return Ok(self.rotate_left(root));
+        }
+        Ok(root)
+    }
+
+    pub fn insert(&mut self, e: VadEntry) -> Result<(), ()> {
+        if e.start_va >= e.end_va {
+            return Err(());
+        }
+        self.root = self.insert_rec(self.root, e)?;
+        Ok(())
+    }
+
+    #[must_use]
+    pub fn find_by_va(&self, va: u64) -> Option<&VadEntry> {
+        let mut cur = self.root;
+        while cur >= 0 && self.nodes[cur as usize].in_use {
+            let n = &self.nodes[cur as usize];
+            if va < n.key.start_va {
+                cur = n.left;
+            } else if va >= n.key.end_va {
+                cur = n.right;
+            } else {
+                return Some(&n.key);
+            }
+        }
+        None
+    }
+
+    fn reset_tree(&mut self) {
+        self.root = -1;
+        for n in &mut self.nodes {
+            *n = Node::empty();
+        }
+    }
+
+    /// Remove the VAD whose **start** VA matches exactly, then rebuild the AVL from remaining entries.
+    pub fn remove(&mut self, start_va: u64) -> Result<(), ()> {
+        let mut buf = [VadEntry::new_range(
+            0,
+            1,
+            VadKind::Reserve,
+            PageProtect::NoAccess,
+            false,
+        ); MAX_NODES];
+        let mut count = 0usize;
+        let mut found = false;
+        for e in self.iter() {
+            if e.start_va == start_va {
+                found = true;
+                continue;
+            }
+            if count >= MAX_NODES {
+                return Err(());
+            }
+            buf[count] = *e;
+            count += 1;
+        }
+        if !found {
+            return Err(());
+        }
+        self.reset_tree();
+        for i in 0..count {
+            self.insert(buf[i])?;
+        }
+        Ok(())
+    }
+
+    /// Split the containing VAD at `va` into `[start, va)` and `[va, end)` (strictly interior only).
+    pub fn split_at_va(&mut self, va: u64) -> Result<(), ()> {
+        let e = *self.find_by_va(va).ok_or(())?;
+        if va <= e.start_va || va >= e.end_va {
+            return Err(());
+        }
+        self.remove(e.start_va)?;
+        self.insert(VadEntry {
+            start_va: e.start_va,
+            end_va: va,
+            kind: e.kind,
+            protect: e.protect,
+            committed: e.committed,
+            section: e.section,
+        })?;
+        self.insert(VadEntry {
+            start_va: va,
+            end_va: e.end_va,
+            kind: e.kind,
+            protect: e.protect,
+            committed: e.committed,
+            section: e.section,
+        })?;
         Ok(())
     }
 
     #[must_use]
     pub fn len(&self) -> usize {
-        self.count
+        self.nodes.iter().filter(|n| n.in_use).count()
     }
 
     #[must_use]
     pub fn is_empty(&self) -> bool {
-        self.count == 0
+        self.root < 0
     }
 
     pub fn iter(&self) -> impl Iterator<Item = &VadEntry> {
-        self.entries[..self.count].iter().filter_map(|x| x.as_ref())
+        self.nodes
+            .iter()
+            .filter(|n| n.in_use)
+            .map(|n| &n.key)
     }
 }
 
@@ -62,15 +304,36 @@ mod tests {
     use super::*;
 
     #[test]
-    fn vad_insert_and_len() {
+    fn vad_avl_insert_find() {
         let mut t = VadTable::new();
-        let e = VadEntry {
-            start_va: 0x10_0000,
-            end_va: 0x20_0000,
-            kind: VadKind::Private,
-        };
+        let e = VadEntry::new_range(
+            0x10_0000,
+            0x20_0000,
+            VadKind::Private,
+            PageProtect::ReadWrite,
+            true,
+        );
         assert!(t.insert(e).is_ok());
+        assert!(t.find_by_va(0x15_0000).is_some());
+        assert!(t.find_by_va(0x09_0000).is_none());
+    }
+
+    #[test]
+    fn vad_remove_and_split() {
+        let mut t = VadTable::new();
+        let e = VadEntry::new_range(
+            0x10_0000,
+            0x40_0000,
+            VadKind::Private,
+            PageProtect::ReadOnly,
+            true,
+        );
+        assert!(t.insert(e).is_ok());
+        assert!(t.split_at_va(0x20_0000).is_ok());
+        assert_eq!(t.len(), 2);
+        assert!(t.find_by_va(0x15_0000).is_some());
+        assert!(t.find_by_va(0x30_0000).is_some());
+        assert!(t.remove(0x10_0000).is_ok());
         assert_eq!(t.len(), 1);
-        assert!(!t.is_empty());
     }
 }
