@@ -55,6 +55,8 @@ pub unsafe extern "C" fn kmain_entry(boot: *const ZirconBootInfo) -> ! {
     hal.flush_tlb_all();
 
     let mut uefi_desktop_poll_fb: Option<FramebufferInfo> = None;
+    #[cfg(target_arch = "x86_64")]
+    let mut uefi_high_half_ok = false;
 
     if !boot.is_null() {
         let info = &*boot;
@@ -167,6 +169,7 @@ pub unsafe extern "C" fn kmain_entry(boot: *const ZirconBootInfo) -> ! {
                         hal.debug_write(
                             b"nt10-kernel: PML4[256] high-half 512MiB mirror + CR3 switch OK\r\n",
                         );
+                        uefi_high_half_ok = true;
                     }
                 }
             }
@@ -227,7 +230,8 @@ pub unsafe extern "C" fn kmain_entry(boot: *const ZirconBootInfo) -> ! {
             let _ = crate::ke::sched::rr_register_thread(stub);
             let _ethread =
                 crate::ps::thread::EThread::new_system_thread(proc.pid, tid);
-            let _ = (_ethread, proc);
+            let _proc_keepalive = &proc;
+            let _ethread_keepalive = &_ethread;
 
             unsafe {
                 crate::mm::bringup_user::copy_user_smoke_code(
@@ -239,6 +243,52 @@ pub unsafe extern "C" fn kmain_entry(boot: *const ZirconBootInfo) -> ! {
             let rip = crate::mm::bringup_user::user_code_entry_va();
             unsafe {
                 crate::arch::x86_64::user_enter::zircon_enter_ring3(rip, rsp);
+            }
+        } else if uefi_high_half_ok && crate::mm::phys::pfn_pool_initialized() {
+            if let Some(new_cr3) = unsafe { crate::mm::uefi_user_cr3::build_uefi_first_user_cr3() } {
+                let mut proc = crate::ps::process::EProcess::new_bootstrap();
+                proc.cr3_phys = new_cr3;
+                proc.peb = crate::ps::peb::PebRef::bringup_smoke();
+                if crate::mm::bringup_user::install_uefi_user_bringup_vads(&mut proc.vad_root).is_ok() {
+                    crate::mm::page_fault::set_page_fault_vad_table(core::ptr::addr_of!(proc.vad_root));
+                    let code = crate::mm::bringup_user::USER_RING3_BRINGUP_CODE;
+                    let map_ok = unsafe {
+                        crate::mm::uefi_user_cr3::map_uefi_bringup_user_code_and_stack(
+                            new_cr3,
+                            code.as_ptr(),
+                            code.len(),
+                        )
+                    };
+                    if map_ok.is_ok() {
+                        unsafe {
+                            paging::write_cr3(new_cr3);
+                        }
+                        hal.flush_tlb_all();
+                        unsafe {
+                            crate::arch::x86_64::syscall::install_syscall_msrs_bringup();
+                        }
+                        hal.debug_write(b"nt10-kernel: syscall MSRs STAR/LSTAR/FMASK (UEFI)\r\n");
+                        let stub = crate::ke::sched::ThreadStub::new(8);
+                        let tid = stub.id;
+                        let _ = crate::ke::sched::rr_register_thread(stub);
+            let _ethread =
+                crate::ps::thread::EThread::new_system_thread(proc.pid, tid);
+                        let _proc_keepalive = &proc;
+                        let _ethread_keepalive = &_ethread;
+                        hal.debug_write(b"nt10-kernel: UEFI user thread starting (ring3 + demand stack)\r\n");
+                        let rsp = crate::mm::user_va::USER_BRINGUP_STACK_TOP - 16;
+                        let rip = crate::mm::bringup_user::user_code_entry_va();
+                        unsafe {
+                            crate::arch::x86_64::user_enter::zircon_enter_ring3(rip, rsp);
+                        }
+                    } else {
+                        hal.debug_write(b"nt10-kernel: UEFI user map failed\r\n");
+                    }
+                } else {
+                    hal.debug_write(b"nt10-kernel: UEFI user VAD install failed\r\n");
+                }
+            } else {
+                hal.debug_write(b"nt10-kernel: UEFI first-user CR3 clone failed\r\n");
             }
         } else {
             hal.debug_write(b"nt10-kernel: skip ring3 smoke (not built-in CR3)\r\n");
