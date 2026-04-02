@@ -1,5 +1,82 @@
 //! gdi32 — device context stubs for GOP-era software rendering.
 
+use crate::ke::spinlock::SpinLock;
+
+/// Bring-up device context: window-surface slot index ([`super::window_surface`]).
+pub type BringupHdc = u8;
+
+/// Last solid brush selected per DC slot (bring-up `SelectObject` stand-in).
+static BRINGUP_BRUSH: SpinLock<[[u8; 4]; 16]> =
+    SpinLock::new([[0x40u8, 0x80, 0xe0, 0xff]; 16]);
+
+/// Select a solid BGRA brush into the bring-up DC (slot index).
+pub fn bringup_select_solid_brush(hdc: BringupHdc, bgra: [u8; 4]) {
+    let mut g = BRINGUP_BRUSH.lock();
+    let i = (hdc as usize).min(15);
+    g[i] = bgra;
+}
+
+#[must_use]
+pub fn bringup_current_brush_bgra(hdc: BringupHdc) -> [u8; 4] {
+    let g = BRINGUP_BRUSH.lock();
+    g[(hdc as usize).min(15)]
+}
+
+/// Fill a rectangle using the brush last selected for `hdc`.
+pub fn bringup_fill_rect_with_selected_brush(
+    hdc: BringupHdc,
+    x0: u32,
+    y0: u32,
+    w: u32,
+    h: u32,
+) {
+    let b = bringup_current_brush_bgra(hdc);
+    bringup_fill_rect(hdc, x0, y0, w, h, b);
+}
+
+/// `BitBlt` bring-up: copy a tight BGRA rectangle from `src` into the window surface `hdc`.
+pub fn bringup_bitblt_bgra_to_slot(
+    hdc: BringupHdc,
+    dst_x: u32,
+    dst_y: u32,
+    src: &[u8],
+    src_w: u32,
+    src_h: u32,
+    sx: u32,
+    sy: u32,
+    w: u32,
+    h: u32,
+) -> Result<(), ()> {
+    let slot = hdc as usize;
+    for row in 0..h {
+        let sy_ = sy + row;
+        let dy_ = dst_y + row;
+        if sy_ >= src_h {
+            break;
+        }
+        for col in 0..w {
+            let sx_ = sx + col;
+            let dx_ = dst_x + col;
+            if sx_ >= src_w {
+                continue;
+            }
+            let si = ((sy_ * src_w + sx_) * 4) as usize;
+            if si + 4 > src.len() {
+                return Err(());
+            }
+            let px = [src[si], src[si + 1], src[si + 2], src[si + 3]];
+            super::window_surface::fill_rect_surface(slot, dx_, dy_, 1, 1, px);
+        }
+    }
+    Ok(())
+}
+
+/// Fill a rectangle in an offscreen window surface (Phase 4).
+#[inline]
+pub fn bringup_fill_rect(hdc: BringupHdc, x0: u32, y0: u32, w: u32, h: u32, bgra: [u8; 4]) {
+    super::window_surface::fill_rect_surface(hdc as usize, x0, y0, w, h, bgra);
+}
+
 #[derive(Clone, Copy, Debug)]
 pub struct GdiDcStub {
     pub fb_base: u64,

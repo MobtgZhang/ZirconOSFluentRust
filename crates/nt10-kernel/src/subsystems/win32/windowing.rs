@@ -2,6 +2,7 @@
 
 use crate::ke::spinlock::SpinLock;
 use crate::libs::win32_abi::{Hwnd, LParam, LResult, WParam};
+use crate::ob::winsta::{DesktopObject, KernelWndProc};
 use core::sync::atomic::{AtomicU64, Ordering};
 
 /// Standard window messages (subset for DefWindowProc and pump tests).
@@ -21,6 +22,22 @@ pub mod wm {
     pub const WM_TIMER: u32 = 0x0113;
     pub const WM_NCCREATE: u32 = 0x0081;
     pub const WM_NCDESTROY: u32 = 0x0082;
+    pub const WM_NCHITTEST: u32 = 0x0084;
+    pub const WM_MOUSEMOVE: u32 = 0x0200;
+    pub const WM_LBUTTONDOWN: u32 = 0x0201;
+    pub const WM_LBUTTONUP: u32 = 0x0202;
+    pub const WM_RBUTTONUP: u32 = 0x0205;
+    pub const WM_CAPTURECHANGED: u32 = 0x0215;
+    pub const WM_USER: u32 = 0x0400;
+}
+
+/// [`wm::WM_NCHITTEST`] return values (documented names; Zircon uses `i64` bring-up).
+pub mod ht {
+    use crate::libs::win32_abi::LResult;
+    pub const HTNOWHERE: LResult = 0;
+    pub const HTCLIENT: LResult = 1;
+    pub const HTCAPTION: LResult = 2;
+    pub const HTBORDER: LResult = 18;
 }
 
 static NEXT_HWND: AtomicU64 = AtomicU64::new(0x1_0000);
@@ -78,7 +95,32 @@ pub fn create_window_ex_bringup(class_atom: u16, _parent: Hwnd) -> Result<Hwnd, 
     Ok(alloc_hwnd())
 }
 
+/// Create-window on a desktop: validates class, allocates HWND, registers HWND table + Z-order.
+pub fn create_window_ex_on_desktop(
+    desktop: &DesktopObject,
+    class_atom: u16,
+    _parent: Hwnd,
+    owner_tid: u32,
+    wndproc: KernelWndProc,
+) -> Result<Hwnd, ()> {
+    let guard = CLASSES.lock();
+    let found = guard.iter().any(|s| s.in_use && s.atom == class_atom);
+    if !found {
+        return Err(());
+    }
+    drop(guard);
+    let hwnd = alloc_hwnd();
+    desktop.register_window(hwnd, owner_tid, wndproc)?;
+    if let Some(si) = desktop.hwnd_slot_index(hwnd) {
+        super::window_surface::clear_surface(si as usize);
+    }
+    Ok(hwnd)
+}
+
 /// Default window procedure — minimal NT10 bring-up behavior.
+///
+/// Non-client hit-testing returns [`ht::HTCLIENT`] here; framed windows use a custom `WndProc` for
+/// [`ht::HTCAPTION`] / [`ht::HTBORDER`] (Phase 5 test HWND).
 #[must_use]
 pub fn def_window_proc_bringup(_hwnd: Hwnd, msg: u32, _wparam: WParam, _lparam: LParam) -> LResult {
     match msg {
@@ -86,6 +128,8 @@ pub fn def_window_proc_bringup(_hwnd: Hwnd, msg: u32, _wparam: WParam, _lparam: 
         wm::WM_DESTROY => 0,
         wm::WM_PAINT => 0,
         wm::WM_ERASEBKGND => 1,
+        wm::WM_NCHITTEST => ht::HTCLIENT,
+        wm::WM_MOUSEMOVE | wm::WM_LBUTTONDOWN | wm::WM_LBUTTONUP | wm::WM_RBUTTONUP => 0,
         _ => 0,
     }
 }
@@ -99,5 +143,15 @@ mod tests {
         let a = register_class_ex_bringup(0, 1).expect("atom");
         let h = create_window_ex_bringup(a, 0).expect("hwnd");
         assert!(h >= 0x1_0000);
+    }
+
+    #[test]
+    fn create_on_desktop_registers_lookup() {
+        use crate::ob::winsta::DesktopObject;
+        let a = register_class_ex_bringup(0, 2).expect("atom");
+        let d = DesktopObject::new();
+        let h = create_window_ex_on_desktop(&d, a, 0, 1, def_window_proc_bringup).expect("hwnd");
+        let got = d.lookup_hwnd(h).expect("lookup");
+        assert_eq!(got.0, 1u32);
     }
 }

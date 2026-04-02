@@ -6,6 +6,7 @@
 use crate::ke::spinlock::SpinLock;
 use crate::libs::win32_abi::{Hwnd, LParam, LResult, WParam};
 use super::csrss_host;
+use super::msg_dispatch;
 use super::csrss_proto::{
     CsrConnectMsg, CsrMessageEnvelope, CSR_GET_MESSAGE, CSR_SERVER_TICK,
 };
@@ -16,14 +17,16 @@ const USER32_Q_CAP: usize = 32;
 
 #[derive(Clone, Copy, Debug, Default)]
 pub struct ZrUser32Message {
+    pub hwnd: Hwnd,
     pub msg: u32,
     pub wparam: u64,
-    pub lparam: u64,
+    pub lparam: LParam,
 }
 
 impl ZrUser32Message {
     pub const fn zero() -> Self {
         Self {
+            hwnd: 0,
             msg: 0,
             wparam: 0,
             lparam: 0,
@@ -69,8 +72,20 @@ impl User32Ring {
 
 static USER32_QUEUE: SpinLock<User32Ring> = SpinLock::new(User32Ring::new());
 
-/// Fixed-capacity FIFO (process-wide bring-up).
+/// Post a message: when the current thread has a bound desktop, routes via
+/// [`msg_dispatch::post_message_kernel`] (same path as Win32 syscalls); otherwise falls back to the
+/// legacy process-wide ring buffer.
 pub fn post_message_zr(m: ZrUser32Message) -> Result<(), ()> {
+    let tid = msg_dispatch::current_thread_for_win32();
+    if let Some(dptr) = msg_dispatch::thread_desktop_ptr(tid) {
+        return msg_dispatch::post_message_kernel(
+            unsafe { dptr.as_ref() },
+            m.hwnd,
+            m.msg,
+            m.wparam,
+            m.lparam,
+        );
+    }
     USER32_QUEUE.lock().push(m)
 }
 
@@ -107,6 +122,10 @@ impl MsgPumpStub {
             if ack.payload_len > 0 && ack.payload[0] == 1 {
                 return true;
             }
+        }
+        let tid = msg_dispatch::current_thread_for_win32();
+        if msg_dispatch::try_get_message_kernel(tid).is_some() {
+            return true;
         }
         if let Some(_m) = peek_pop_message_zr() {
             return true;

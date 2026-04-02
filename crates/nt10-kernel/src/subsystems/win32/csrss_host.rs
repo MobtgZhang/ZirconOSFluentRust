@@ -1,5 +1,17 @@
 //! In-kernel CSRSS stub host: bounded rings for [`super::csrss_proto::CsrMessageEnvelope`] and ACK generation.
 //! **Target architecture:** a real `csrss.exe` user process speaking ALPC to a slim kernel façade.
+//!
+//! **Phase 6:** WinSta/Desktop objects move to Ring-3 csrss while syscalls stay in-kernel; until then
+//! [`crate::servers::smss::NT10_PHASE6_RING3_CSRSS_FALLBACK_TO_KERNEL_HOST`] keeps this path for QEMU/CI
+//! (see `docs/cn/Phase6-Routing.md`).
+
+/// `false` = kernel host still registers desktops; `true` = csrss owns them (future).
+pub const PHASE6_CSRSS_OWNS_WINSTA_IN_RING3: bool = false;
+
+#[cfg(target_arch = "x86_64")]
+use core::ptr::NonNull;
+#[cfg(target_arch = "x86_64")]
+use core::sync::atomic::{AtomicBool, Ordering};
 
 use crate::ke::spinlock::SpinLock;
 use super::csrss_proto::{
@@ -113,10 +125,128 @@ pub fn poll_get_message(_timeout_spins: u32) -> Option<CsrMessageEnvelope> {
     CSR_HOST_TO_CLIENT.lock().pop()
 }
 
-/// Bring-up: enqueue connect and drain one request (marks subsystem ready).
+#[cfg(target_arch = "x86_64")]
+static PHASE3_WNDPROC_HIT: AtomicBool = AtomicBool::new(false);
+
+#[cfg(target_arch = "x86_64")]
+fn phase3_probe_wndproc(
+    hwnd: crate::libs::win32_abi::Hwnd,
+    msg: u32,
+    wp: crate::libs::win32_abi::WParam,
+    lp: crate::libs::win32_abi::LParam,
+) -> crate::libs::win32_abi::LResult {
+    if msg == super::windowing::wm::WM_USER {
+        PHASE3_WNDPROC_HIT.store(true, Ordering::SeqCst);
+    }
+    super::windowing::def_window_proc_bringup(hwnd, msg, wp, lp)
+}
+
+/// Serial-only Phase 3 acceptance (CreateWindow → Post WM_USER → GetMessage → Dispatch); x86_64 only.
+#[cfg(target_arch = "x86_64")]
+pub fn phase3_message_pump_serial_smoke() {
+    use super::msg_dispatch;
+    use super::windowing::{create_window_ex_on_desktop, register_class_ex_bringup};
+    use crate::hal::x86_64::serial;
+    use crate::ob::winsta::DesktopObject;
+
+    PHASE3_WNDPROC_HIT.store(false, Ordering::SeqCst);
+    serial::write_line(b"nt10-kernel: Phase3 msg pump smoke begin\r\n");
+    let mut desktop = DesktopObject::new();
+    let dptr = NonNull::from(&mut desktop);
+    let tid = 1u32;
+    msg_dispatch::set_current_thread_for_win32(tid);
+    msg_dispatch::thread_bind_desktop(tid, dptr);
+    let Ok(atom) = register_class_ex_bringup(0, 0x70) else {
+        serial::write_line(b"nt10-kernel: Phase3 msg pump smoke FAIL (class)\r\n");
+        return;
+    };
+    let Ok(hwnd) = create_window_ex_on_desktop(
+        unsafe { dptr.as_ref() },
+        atom,
+        0,
+        tid,
+        phase3_probe_wndproc,
+    ) else {
+        serial::write_line(b"nt10-kernel: Phase3 msg pump smoke FAIL (create)\r\n");
+        return;
+    };
+    if msg_dispatch::phase3_message_pump_integration(tid, unsafe { dptr.as_ref() }, hwnd).is_err() {
+        serial::write_line(b"nt10-kernel: Phase3 msg pump smoke FAIL (integration)\r\n");
+        return;
+    }
+    if !PHASE3_WNDPROC_HIT.load(Ordering::SeqCst) {
+        serial::write_line(b"nt10-kernel: Phase3 msg pump smoke FAIL (wndproc)\r\n");
+        return;
+    }
+    serial::write_line(b"nt10-kernel: Phase3 WndProc dispatched\r\n");
+    serial::write_line(b"nt10-kernel: Phase3 msg pump smoke OK\r\n");
+}
+
+/// Phase 4: offscreen surface + bitmap text + software composite into a mock framebuffer (x86_64 serial).
+#[cfg(target_arch = "x86_64")]
+pub fn phase4_compositor_serial_smoke() {
+    use super::compositor;
+    use super::msg_dispatch;
+    use super::text_bringup::text_out_ascii;
+    use super::windowing::{create_window_ex_on_desktop, register_class_ex_bringup};
+    use crate::hal::x86_64::serial;
+    use crate::ob::winsta::DesktopObject;
+
+    serial::write_line(b"nt10-kernel: Phase4 compositor smoke begin\r\n");
+    let mut desktop = DesktopObject::new();
+    let dptr = NonNull::from(&mut desktop);
+    let tid = 1u32;
+    msg_dispatch::set_current_thread_for_win32(tid);
+    msg_dispatch::thread_bind_desktop(tid, dptr);
+    let Ok(atom) = register_class_ex_bringup(0, 0x71) else {
+        serial::write_line(b"nt10-kernel: Phase4 compositor smoke FAIL (class)\r\n");
+        return;
+    };
+    let Ok(hwnd) = create_window_ex_on_desktop(
+        unsafe { dptr.as_ref() },
+        atom,
+        0,
+        tid,
+        super::windowing::def_window_proc_bringup,
+    ) else {
+        serial::write_line(b"nt10-kernel: Phase4 compositor smoke FAIL (create)\r\n");
+        return;
+    };
+    let Some(si) = desktop.hwnd_slot_index(hwnd) else {
+        serial::write_line(b"nt10-kernel: Phase4 compositor smoke FAIL (slot)\r\n");
+        return;
+    };
+    super::window_surface::fill_surface_solid(si as usize, [40, 80, 120, 255]);
+    text_out_ascii(si as usize, 4, 4, b"Phase4", [255, 255, 255, 255]);
+    let mut fb = [0u8; 256 * 64 * 4];
+    if compositor::composite_desktop_to_framebuffer(
+        unsafe { dptr.as_ref() },
+        &mut fb,
+        256,
+        64,
+        256,
+        0,
+        8,
+    )
+    .is_err()
+        || !fb.iter().any(|&b| b != 0)
+    {
+        serial::write_line(b"nt10-kernel: Phase4 compositor smoke FAIL (composite)\r\n");
+        return;
+    }
+    serial::write_line(b"nt10-kernel: Phase4 compositor smoke OK\r\n");
+}
+
+/// Bring-up: Win32 syscalls, CSR connect, Phase 3/4 serial smoke (x86_64).
 pub fn bringup_kernel_thread_smoke() {
+    super::syscall_win32::register_win32_syscalls_bringup();
     let _ = post_from_client(CsrMessageEnvelope::empty(CSR_CONNECT));
     let _ = pump_one();
+    #[cfg(target_arch = "x86_64")]
+    {
+        phase3_message_pump_serial_smoke();
+        phase4_compositor_serial_smoke();
+    }
 }
 
 #[cfg(test)]

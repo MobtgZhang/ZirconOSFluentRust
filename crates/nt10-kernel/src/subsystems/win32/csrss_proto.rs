@@ -12,6 +12,9 @@ pub const CSR_CREATE_DESKTOP: u32 = 0x1002;
 /// Open an existing window station by name (ALPC payload = UTF-16 or ANSI name; bring-up ignores).
 pub const CSR_OPEN_WINSTA: u32 = 0x1005;
 /// `SetProcessWindowStation` — attach calling client to named station (stub).
+///
+/// Real resolution will use [`crate::ob::winsta::lookup_session_winsta_desktop_path`] /
+/// session namespace buckets once CSRSS runs out-of-process; bring-up ACK only.
 pub const CSR_SET_PROCESS_WINSTA: u32 = 0x1006;
 /// Pump-style poll (stub).
 pub const CSR_GET_MESSAGE: u32 = 0x1003;
