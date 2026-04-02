@@ -1,7 +1,10 @@
 //! WinRT runtime — AppContainer / activation stubs (no Windows OS code;
 //! [`crate::milestones::PHASE_WINRT`]).
 
-/// ZirconOS-local runtime class id (opaque index, not a Windows CLSID).
+/// Version of the project-local packaged-app manifest schema (not a Windows AppxManifest).
+pub const ZOS_MANIFEST_SCHEMA_VERSION: u32 = 1;
+
+/// ZirconOSFluent-local runtime class id (opaque index, not a Windows CLSID).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct ZrRuntimeClassId(pub u32);
 

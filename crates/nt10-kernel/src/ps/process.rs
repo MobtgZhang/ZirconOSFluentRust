@@ -25,6 +25,8 @@ pub struct EProcess {
     pub unique_id: u64,
     /// Matches token / Terminal Services session (`\Sessions\<id>\...`).
     pub session_id: u8,
+    /// Page-table root (CR3) for this process; `0` until per-process address spaces exist.
+    pub cr3_phys: u64,
 }
 
 static NEXT_PID: AtomicU64 = AtomicU64::new(4);
@@ -41,6 +43,7 @@ impl EProcess {
             vad_root: VadTable::new(),
             unique_id: pid.0,
             session_id: 0,
+            cr3_phys: 0,
         }
     }
 

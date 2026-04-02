@@ -18,6 +18,7 @@ pub mod clipboard;
 pub mod context_menu_registry;
 pub mod dwm;
 pub mod explorer_view;
+pub mod font_stub;
 pub mod hosted_apps;
 pub mod known_folder;
 pub mod lnk;

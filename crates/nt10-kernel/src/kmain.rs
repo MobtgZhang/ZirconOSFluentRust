@@ -86,6 +86,18 @@ pub unsafe extern "C" fn kmain_entry(boot: *const ZirconBootInfo) -> ! {
                     log_u64_hal(&hal, b"nt10-kernel: usable[0].base=", ranges[0].base);
                     log_u64_hal(&hal, b"nt10-kernel: usable[0].pages=", ranges[0].page_count);
                 }
+                unsafe {
+                    crate::mm::phys::pfn_bringup_init(info);
+                }
+                if unsafe { crate::mm::heap::kernel_heap_bringup_reserve_pages(1) } {
+                    hal.debug_write(b"nt10-kernel: PFN bump + 1-page kernel heap arena OK\r\n");
+                } else {
+                    hal.debug_write(b"nt10-kernel: kernel heap arena init skipped (no PFN / non-contiguous)\r\n");
+                }
+                let probe = crate::mm::heap::kernel_bump_alloc(16, 64);
+                if !probe.is_null() {
+                    hal.debug_write(b"nt10-kernel: kernel_bump_alloc probe OK\r\n");
+                }
                 match crate::drivers::video::display_mgr::parse_framebuffer_handoff(&info.framebuffer) {
                     Ok(fb) => {
                         hal.debug_write(b"nt10-kernel: GOP framebuffer handoff OK\r\n");

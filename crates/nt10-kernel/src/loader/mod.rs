@@ -1,6 +1,7 @@
 //! PE/ELF loaders.
 
 pub mod aslr;
+pub mod demand_paging;
 pub mod elf;
 pub mod import_;
 pub mod pe;

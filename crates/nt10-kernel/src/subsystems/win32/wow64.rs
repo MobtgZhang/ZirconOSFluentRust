@@ -47,3 +47,9 @@ impl Wow64SyscallFrame {
 pub fn map_wow64_index(idx: u16) -> u16 {
     idx
 }
+
+/// Future: patch user ntdll gate + MSR path for WOW64 syscall redirection.
+#[must_use]
+pub fn wow64_redirect_gate_stub(_native_syscall_num: u32) -> bool {
+    false
+}

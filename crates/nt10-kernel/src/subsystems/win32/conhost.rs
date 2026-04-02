@@ -1,4 +1,5 @@
 //! ConHost — ConPTY-style master/slave ring buffers (no escape sequences).
+//! Future: pair with kernel `\\Device\\NamedPipe`-style objects for session-isolated TTY I/O.
 //! TSF / IME integration would sit above this UTF-8 pipe (`extensions/phase-05-input-stack.md`).
 
 /// Fixed-size byte ring for host ↔ client copy (bring-up).

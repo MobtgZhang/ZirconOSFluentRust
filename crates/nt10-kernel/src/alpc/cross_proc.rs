@@ -61,6 +61,11 @@ impl AlpcDuplexLink {
     }
 }
 
+/// Placeholder for hardware-isolated ALPC: copy `src` into a target address space (`target_cr3`).
+pub fn post_cross_address_space(_target_cr3: u64, _src: &[u8]) -> Result<(), ()> {
+    Err(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

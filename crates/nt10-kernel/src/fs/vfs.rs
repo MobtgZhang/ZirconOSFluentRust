@@ -3,6 +3,7 @@
 use core::ptr::NonNull;
 use core::sync::atomic::{AtomicPtr, Ordering};
 
+use crate::fs::fat32::{self, Fat32Bpb};
 use crate::io::device::BlockVolumeBringup;
 use crate::io::iomgr::io_complete_request;
 use crate::io::irp::Irp;
@@ -139,6 +140,63 @@ pub fn format_mount_slot_line(slot: usize, mp: Option<&VfsMountPoint>, out: &mut
     w
 }
 
+fn format_fat83_name(raw: &[u8; 11], line: &mut [u8; 80]) -> usize {
+    let mut w = 0usize;
+    let mut end = 8usize;
+    while end > 0 && raw[end - 1] == b' ' {
+        end -= 1;
+    }
+    for b in raw.iter().take(end) {
+        if w < line.len() {
+            line[w] = *b;
+            w += 1;
+        }
+    }
+    let mut ext_end = 11usize;
+    while ext_end > 8 && raw[ext_end - 1] == b' ' {
+        ext_end -= 1;
+    }
+    if ext_end > 8 && w + 1 + (ext_end - 8) <= line.len() {
+        line[w] = b'.';
+        w += 1;
+        for b in raw.iter().take(ext_end).skip(8) {
+            line[w] = *b;
+            w += 1;
+        }
+    }
+    w
+}
+
+/// If `mp` backs a plausible FAT32 image, append root short-file names to the desktop list.
+fn append_fat32_root_files(mp: &VfsMountPoint, rows: &mut [[u8; 80]; 32], lens: &mut [usize; 32], count: &mut usize) {
+    let Some(bv) = mp.block_volume.as_ref() else {
+        return;
+    };
+    let vol = unsafe { bv.disk.as_slice() };
+    if vol.len() < core::mem::size_of::<Fat32Bpb>() {
+        return;
+    }
+    let bpb: Fat32Bpb = unsafe { vol.as_ptr().cast::<Fat32Bpb>().read_unaligned() };
+    if !bpb.looks_plausible() {
+        return;
+    }
+    let mut raw = [[0u8; 11]; 16];
+    let Ok(n) = fat32::fat32_list_root_short_names_chained(&bpb, vol, 16, &mut raw) else {
+        return;
+    };
+    for i in 0..n {
+        if *count >= rows.len() {
+            break;
+        }
+        let nw = format_fat83_name(&raw[i], &mut rows[*count]);
+        if nw == 0 {
+            continue;
+        }
+        lens[*count] = nw;
+        *count += 1;
+    }
+}
+
 /// Fill `rows` / `lens` / `count` for the Files list: **This PC** plus mount slots (or a stub line).
 pub fn fill_desktop_file_list(rows: &mut [[u8; 80]; 32], lens: &mut [usize; 32], count: &mut usize) {
     *count = 0;
@@ -159,6 +217,9 @@ pub fn fill_desktop_file_list(rows: &mut [[u8; 80]; 32], lens: &mut [usize; 32],
             if n > 0 || mp.is_some() {
                 lens[*count] = n.max(1);
                 *count += 1;
+            }
+            if let Some(m) = mp {
+                append_fat32_root_files(m, rows, lens, count);
             }
         }
     } else if *count < 32 {

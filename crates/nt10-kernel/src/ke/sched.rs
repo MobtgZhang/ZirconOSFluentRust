@@ -1,4 +1,5 @@
 //! Scheduler (multi-level feedback) — bring-up timer + minimal round-robin index.
+//! **Preemption:** timer IRQ bumps [`on_timer_tick`]; future MLFQ picks the next runnable at quantum end.
 
 use core::sync::atomic::{AtomicU32, AtomicUsize, Ordering};
 

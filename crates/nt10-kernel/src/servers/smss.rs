@@ -31,7 +31,7 @@ pub fn next_phase(current: SmssPhase) -> Option<SmssPhase> {
     }
 }
 
-/// Ordered native image names for subsystem bring-up (paths are ZirconOS-specific).
+/// Ordered native image names for subsystem bring-up (paths are ZirconOSFluent-specific).
 pub const SMSS_BOOT_CHAIN: &[&[u8]] = &[
     b"SystemRoot\\System32\\smss.exe",
     b"SystemRoot\\System32\\csrss.exe",
@@ -40,6 +40,12 @@ pub const SMSS_BOOT_CHAIN: &[&[u8]] = &[
 #[must_use]
 pub fn boot_image_at(step: usize) -> Option<&'static [u8]> {
     SMSS_BOOT_CHAIN.get(step).copied()
+}
+
+/// Future: load native SMSS/CSRSS image from VFS for `phase`. Bring-up returns `false`.
+#[must_use]
+pub fn try_load_native_image_stub(_phase: SmssPhase) -> bool {
+    false
 }
 
 /// Canonical SMSS ordering for documentation and tests (not executed by the kernel yet).

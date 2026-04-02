@@ -1,4 +1,5 @@
 //! In-kernel CSRSS stub host: bounded rings for [`super::csrss_proto::CsrMessageEnvelope`] and ACK generation.
+//! **Target architecture:** a real `csrss.exe` user process speaking ALPC to a slim kernel façade.
 
 use crate::ke::spinlock::SpinLock;
 use super::csrss_proto::{

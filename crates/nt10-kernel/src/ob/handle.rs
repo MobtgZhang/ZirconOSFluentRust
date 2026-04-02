@@ -8,9 +8,10 @@ pub struct KernelHandle(pub u32);
 
 pub const MAX_HANDLES_PER_PROCESS: usize = 1024;
 
-/// Minimal fixed-size table for bring-up.
+/// Minimal fixed-size table for bring-up (per-slot reference counts for future OB teardown).
 pub struct HandleTable {
     slots: [Option<NonNull<()>>; MAX_HANDLES_PER_PROCESS],
+    ref_count: [u32; MAX_HANDLES_PER_PROCESS],
     next: u32,
 }
 
@@ -25,6 +26,7 @@ impl HandleTable {
         const NONE: Option<NonNull<()>> = None;
         Self {
             slots: [NONE; MAX_HANDLES_PER_PROCESS],
+            ref_count: [0; MAX_HANDLES_PER_PROCESS],
             next: 0,
         }
     }
@@ -36,8 +38,19 @@ impl HandleTable {
             return None;
         }
         self.slots[idx] = Some(obj);
+        self.ref_count[idx] = 1;
         self.next += 1;
         Some(KernelHandle(idx as u32))
+    }
+
+    /// Increment reference on an existing handle (dup semantics sketch).
+    pub fn reference_raw(&mut self, h: KernelHandle) -> Result<(), ()> {
+        let idx = h.0 as usize;
+        if idx >= MAX_HANDLES_PER_PROCESS || self.slots[idx].is_none() {
+            return Err(());
+        }
+        self.ref_count[idx] = self.ref_count[idx].saturating_add(1);
+        Ok(())
     }
 
     #[must_use]
@@ -49,12 +62,37 @@ impl HandleTable {
         self.slots[idx]
     }
 
-    /// Removes the slot if present; returns the previous raw pointer.
+    /// Decrements reference count; clears slot when it reaches zero. Returns pointer on final release.
     pub fn close_raw(&mut self, h: KernelHandle) -> Option<NonNull<()>> {
         let idx = h.0 as usize;
         if idx >= MAX_HANDLES_PER_PROCESS {
             return None;
         }
-        self.slots[idx].take()
+        if self.slots[idx].is_none() {
+            return None;
+        }
+        let r = self.ref_count[idx].saturating_sub(1);
+        self.ref_count[idx] = r;
+        if r == 0 {
+            self.slots[idx].take()
+        } else {
+            None
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn refcount_dup_delays_release() {
+        let mut t = HandleTable::new();
+        let p = NonNull::dangling();
+        let h = t.alloc_raw(p).unwrap();
+        assert!(t.reference_raw(h).is_ok());
+        assert!(t.close_raw(h).is_none());
+        let released = t.close_raw(h);
+        assert_eq!(released, Some(p));
     }
 }

@@ -35,6 +35,24 @@ pub fn access_check_integrity_write(writer_level: u8, object_min_integrity: u8) 
     }
 }
 
+/// AND composition for multi-part checks (all must grant).
+#[must_use]
+pub const fn access_check_and(a: AccessCheckResult, b: AccessCheckResult) -> AccessCheckResult {
+    match (a, b) {
+        (AccessCheckResult::Granted, AccessCheckResult::Granted) => AccessCheckResult::Granted,
+        _ => AccessCheckResult::Denied,
+    }
+}
+
+/// OR composition (any grants).
+#[must_use]
+pub const fn access_check_or(a: AccessCheckResult, b: AccessCheckResult) -> AccessCheckResult {
+    match (a, b) {
+        (AccessCheckResult::Denied, AccessCheckResult::Denied) => AccessCheckResult::Denied,
+        _ => AccessCheckResult::Granted,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -53,6 +71,18 @@ mod tests {
     fn high_writer_granted_on_high_floor() {
         assert_eq!(
             access_check_integrity_write(SECURITY_MANDATORY_HIGH_RID, SECURITY_MANDATORY_HIGH_RID),
+            AccessCheckResult::Granted
+        );
+    }
+
+    #[test]
+    fn and_or_compose() {
+        assert_eq!(
+            access_check_and(AccessCheckResult::Granted, AccessCheckResult::Denied),
+            AccessCheckResult::Denied
+        );
+        assert_eq!(
+            access_check_or(AccessCheckResult::Denied, AccessCheckResult::Granted),
             AccessCheckResult::Granted
         );
     }

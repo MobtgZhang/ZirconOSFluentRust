@@ -166,6 +166,69 @@ pub fn fat32_count_root_short_names_chained(
     Err(())
 }
 
+/// Lists up to `out.len()` short (8.3) **file** names from the root directory cluster chain.
+/// Each name is the raw 11 directory bytes (space-padded); caller may trim spaces.
+#[must_use]
+pub fn fat32_list_root_short_names_chained(
+    bpb: &Fat32Bpb,
+    vol: &[u8],
+    max_clusters: u32,
+    out: &mut [[u8; 11]],
+) -> Result<usize, ()> {
+    if !bpb.looks_plausible() {
+        return Err(());
+    }
+    let mut written = 0usize;
+    let mut clust = bpb.root_cluster;
+    'outer: for _ in 0..max_clusters {
+        if written >= out.len() {
+            break;
+        }
+        let s0 = fat32_cluster_first_sector(bpb, clust).ok_or(())?;
+        let bps = bpb.sector_size() as usize;
+        let spc = bpb.sectors_per_cluster as usize;
+        let mut ended = false;
+        for sec_off in 0..spc {
+            let sec = s0 + sec_off as u32;
+            let sect = fat32_sector_slice(bpb, vol, sec).ok_or(())?;
+            for i in 0..(bps / 32) {
+                if written >= out.len() {
+                    break 'outer;
+                }
+                let entry = &sect[i * 32..i * 32 + 32];
+                let first = entry[0];
+                if first == 0 {
+                    ended = true;
+                    break;
+                }
+                if first == 0xe5 {
+                    continue;
+                }
+                let attr = entry[11];
+                if attr == ATTR_LONG_NAME || (attr & ATTR_VOLUME_ID) != 0 {
+                    continue;
+                }
+                if (attr & 0x10) != 0 {
+                    // directory entry — skip for simple file listing
+                    continue;
+                }
+                let mut name = [0u8; 11];
+                name.copy_from_slice(&entry[0..11]);
+                out[written] = name;
+                written += 1;
+            }
+            if ended {
+                break;
+            }
+        }
+        match fat32_next_cluster(bpb, vol, clust) {
+            Some(n) => clust = n,
+            None => break,
+        }
+    }
+    Ok(written)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -225,5 +288,10 @@ mod tests {
         let bpb_read: Fat32Bpb = unsafe { *(vol.as_ptr() as *const Fat32Bpb) };
         let n = fat32_count_root_short_names_chained(&bpb_read, &vol, 8).unwrap();
         assert_eq!(n, 2);
+        let mut names = [[0u8; 11]; 4];
+        let ln = fat32_list_root_short_names_chained(&bpb_read, &vol, 8, &mut names).unwrap();
+        assert_eq!(ln, 2);
+        assert_eq!(&names[0], b"A       TXT");
+        assert_eq!(&names[1], b"B       TXT");
     }
 }

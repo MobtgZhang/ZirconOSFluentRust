@@ -2,7 +2,7 @@
 name = "nt10-kernel"
 version = "0.0.0"
 edition.workspace = true
-description = "ZirconOS NT10 kernel library (no_std), layout per ideas/ZirconOS_NT10_Architecture.md §4"
+description = "ZirconOSFluent NT10 kernel library (no_std), layout per ideas/ZirconOS_NT10_Architecture.md §4"
 license.workspace = true
 repository.workspace = true
 

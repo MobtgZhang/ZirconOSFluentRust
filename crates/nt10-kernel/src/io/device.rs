@@ -31,6 +31,15 @@ impl RamdiskDevice {
         }
     }
 
+    /// View the whole backing store (static ramdisk / identity-mapped only).
+    ///
+    /// # Safety
+    /// `data` must reference `len` initialized bytes valid for `'a`.
+    #[must_use]
+    pub unsafe fn as_slice<'a>(&self) -> &'a [u8] {
+        unsafe { core::slice::from_raw_parts(self.data, self.len) }
+    }
+
     /// Copies up to `buf.len()` bytes from `offset`; returns byte count copied.
     #[must_use]
     pub fn read_at(&self, offset: u64, buf: &mut [u8]) -> usize {

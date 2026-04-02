@@ -15,6 +15,9 @@ pub enum IrpMajor {
 /// Max synchronous completion routines chained on one IRP (bring-up).
 pub const IRP_COMPLETION_STACK: usize = 4;
 
+/// Documented placeholder: completion may be deferred (async DPC / worker queue).
+pub const IRP_FLAG_PENDING: u16 = 0x0001;
+
 /// Completion runs after status/information are finalized for one stack frame.
 pub type IoCompletionRoutine = unsafe fn(*mut Irp, *mut ());
 

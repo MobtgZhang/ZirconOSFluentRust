@@ -96,3 +96,16 @@ pub fn flush_tlb_all() {
         core::arch::asm!("mov cr3, {}", in(reg) cr3, options(nomem, nostack));
     }
 }
+
+/// PTE bit 63: no-execute when `EFER.NXE` is set (Intel SDM).
+pub const PTE_NX: u64 = 1u64 << 63;
+
+/// Apply or clear NX on a leaf PTE value (bring-up helper; does not flush TLB).
+#[must_use]
+pub const fn pte_with_nx(pte: u64, nx: bool) -> u64 {
+    if nx {
+        pte | PTE_NX
+    } else {
+        pte & !PTE_NX
+    }
+}

@@ -1,6 +1,6 @@
 #![no_std]
 
-//! ZirconOS NT10 kernel library (skeleton).
+//! ZirconOSFluent / NT10 kernel library (skeleton).
 //! Layout: [ideas/ZirconOS_NT10_Architecture.md](../../../ideas/ZirconOS_NT10_Architecture.md) §4.
 
 pub mod alpc;

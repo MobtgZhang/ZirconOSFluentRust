@@ -33,3 +33,13 @@ pub fn hypervisor_vendor12() -> Option<[u8; 12]> {
 pub fn hypervisor_present_stub() -> bool {
     hypervisor_present()
 }
+
+/// Short string for serial logs until full enlightenment reporting exists.
+#[must_use]
+pub fn hypervisor_caps_summary_stub() -> &'static str {
+    if hypervisor_present() {
+        "hypervisor_present"
+    } else {
+        "bare_metal"
+    }
+}

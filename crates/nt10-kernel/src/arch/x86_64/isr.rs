@@ -1,4 +1,4 @@
-//! IRQ / exception entry stubs (x86_64).
+//! IRQ / exception entry stubs (x86_64). ISRs run at device IRQL; long work belongs in DPCs at DISPATCH_LEVEL.
 
 use core::arch::global_asm;
 

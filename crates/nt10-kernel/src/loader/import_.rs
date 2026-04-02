@@ -35,6 +35,12 @@ pub fn count_import_descriptors(image: &[u8], import_rva: u32, import_size: u32)
     count
 }
 
+/// Placeholder for full loader bind (DLL search path + IAT fill).
+#[must_use]
+pub fn resolve_imports_for_image_stub(_image: &mut [u8]) -> bool {
+    false
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
