@@ -9,5 +9,6 @@ pub mod isr;
 pub mod msr;
 pub mod paging;
 pub mod syscall;
+pub mod tlb;
 pub mod user_enter;
 pub mod vmx;

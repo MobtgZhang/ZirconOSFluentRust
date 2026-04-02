@@ -183,6 +183,120 @@ const DESKTOP_CAPTION_TEXTS: [&str; 4] = [
 /// Order matches `activate_ctx_item` in `session.rs`.
 const CONTEXT_MENU_LABEL_TEXTS: [&str; 3] = ["Open", "Properties", "Close"];
 
+/// Prefer Noto Sans (OFL); allow other common open-licensed UI fonts if present.
+const FONT_CANDIDATE_REL_PATHS: [&str; 3] = [
+    "third_party/fonts/latin/NotoSans-Regular.ttf",
+    "third_party/fonts/latin/LiberationSans-Regular.ttf",
+    "third_party/fonts/latin/DejaVuSans.ttf",
+];
+
+fn find_ui_sans_bytes(root: &Path) -> Option<Vec<u8>> {
+    for rel in FONT_CANDIDATE_REL_PATHS {
+        let p = root.join(rel);
+        println!("cargo:rerun-if-changed={}", p.display());
+        if let Ok(b) = std::fs::read(&p) {
+            return Some(b);
+        }
+    }
+    None
+}
+
+/// Build-time UI font: real OFL TTF via fontdue, or **placeholder** bars (no Microsoft fonts).
+enum BuildUiFont {
+    Real(fontdue::Font),
+    Placeholder,
+}
+
+impl BuildUiFont {
+    fn caption(&self, text: &str, px: f32) -> (u32, u32, Vec<u8>) {
+        match self {
+            BuildUiFont::Real(f) => rasterize_caption_line_bgra(f, text, px),
+            BuildUiFont::Placeholder => rasterize_caption_placeholder(text),
+        }
+    }
+
+    fn menu(&self, text: &str, px: f32) -> (u32, u32, Vec<u8>) {
+        match self {
+            BuildUiFont::Real(f) => rasterize_menu_label_line_bgra(f, text, px),
+            BuildUiFont::Placeholder => rasterize_menu_placeholder(text),
+        }
+    }
+
+    fn glyph8(&self, ch: char) -> [u8; 8] {
+        match self {
+            BuildUiFont::Real(f) => glyph_mask_8x8(f, ch),
+            BuildUiFont::Placeholder => glyph_mask_8x8_placeholder(ch),
+        }
+    }
+}
+
+/// Readable-ish fallback when no `.ttf` is vendored (clone-friendly builds).
+fn rasterize_caption_placeholder(text: &str) -> (u32, u32, Vec<u8>) {
+    let h = 22u32;
+    let w = ((text.chars().count() as u32).saturating_mul(9)).max(24);
+    let mut buf = vec![0u8; (w * h * 4) as usize];
+    for px in 0..w {
+        for py in 0..h {
+            let o = ((py * w + px) * 4) as usize;
+            buf[o] = 0x1c;
+            buf[o + 1] = 0x18;
+            buf[o + 2] = 0x18;
+            buf[o + 3] = 0xff;
+        }
+    }
+    for (i, _) in text.chars().enumerate() {
+        let base_x = 4u32.saturating_add((i as u32).saturating_mul(9));
+        if base_x.saturating_add(6) >= w {
+            break;
+        }
+        for cx in base_x..base_x + 6 {
+            for cy in 6..14 {
+                let o = ((cy * w + cx) * 4) as usize;
+                buf[o] = 0xf0;
+                buf[o + 1] = 0xf0;
+                buf[o + 2] = 0xf8;
+                buf[o + 3] = 0xff;
+            }
+        }
+    }
+    (w, h, buf)
+}
+
+fn rasterize_menu_placeholder(text: &str) -> (u32, u32, Vec<u8>) {
+    let h = 20u32;
+    let w = ((text.chars().count() as u32).saturating_mul(8)).max(20);
+    let mut buf = vec![0u8; (w * h * 4) as usize];
+    for px in 0..w {
+        for py in 0..h {
+            let o = ((py * w + px) * 4) as usize;
+            buf[o] = 0x28;
+            buf[o + 1] = 0x28;
+            buf[o + 2] = 0x30;
+            buf[o + 3] = 0xff;
+        }
+    }
+    for (i, _) in text.chars().enumerate() {
+        let base_x = 3u32.saturating_add((i as u32).saturating_mul(8));
+        if base_x.saturating_add(5) >= w {
+            break;
+        }
+        for cx in base_x..base_x + 5 {
+            for cy in 5..13 {
+                let o = ((cy * w + cx) * 4) as usize;
+                buf[o] = 0xfc;
+                buf[o + 1] = 0xfc;
+                buf[o + 2] = 0xfc;
+                buf[o + 3] = 0xff;
+            }
+        }
+    }
+    (w, h, buf)
+}
+
+fn glyph_mask_8x8_placeholder(_ch: char) -> [u8; 8] {
+    [0x10, 0x10, 0x10, 0xFE, 0x10, 0x10, 0x10, 0x10]
+}
+
 fn rasterize_caption_line_bgra(font: &fontdue::Font, text: &str, px: f32) -> (u32, u32, Vec<u8>) {
     let baseline_y: i32 = 24;
     struct GlyphPlaced {
@@ -572,16 +686,34 @@ pub static DEFAULT_WALLPAPER_BGRA: &[u8] = include_bytes!(concat!(env!("OUT_DIR"
         ));
     }
 
-    let path_noto = root.join("third_party/fonts/latin/NotoSans-Regular.ttf");
-    println!("cargo:rerun-if-changed={}", path_noto.display());
     println!(
         "cargo:rerun-if-changed={}",
         root.join("third_party/fonts/licenses/OFL-NotoSans.txt").display()
     );
-    let noto_data = std::fs::read(&path_noto)
-        .unwrap_or_else(|e| panic!("read {}: {e}", path_noto.display()));
-    let font_ui_sans = fontdue::Font::from_bytes(noto_data, fontdue::FontSettings::default())
-        .unwrap_or_else(|e| panic!("fontdue parse Noto Sans: {e}"));
+    let require_font = std::env::var("NT10_KERNEL_REQUIRE_OFL_FONT")
+        .map(|v| v == "1")
+        .unwrap_or(false);
+    let ui_font: BuildUiFont = match find_ui_sans_bytes(&root) {
+        Some(bytes) => {
+            match fontdue::Font::from_bytes(bytes, fontdue::FontSettings::default()) {
+                Ok(f) => BuildUiFont::Real(f),
+                Err(e) if require_font => panic!("fontdue parse UI font: {e}"),
+                Err(_) => {
+                    println!("cargo:warning=nt10-kernel: fontdue rejected UI font bytes — using placeholders");
+                    BuildUiFont::Placeholder
+                }
+            }
+        }
+        None => {
+            if require_font {
+                panic!(
+                    "NT10_KERNEL_REQUIRE_OFL_FONT=1 but no TTF under third_party/fonts/latin/ — run ./scripts/fetch-ofl-fonts.sh"
+                );
+            }
+            println!("cargo:warning=nt10-kernel: no OFL UI font found — placeholder text rasters (run ./scripts/fetch-ofl-fonts.sh)");
+            BuildUiFont::Placeholder
+        }
+    };
 
     assert_eq!(
         START_MENU_LABEL_TEXTS.len(),
@@ -606,7 +738,7 @@ pub static DEFAULT_WALLPAPER_BGRA: &[u8] = include_bytes!(concat!(env!("OUT_DIR"
     ));
     let mut max_cap_h = 0u32;
     for (i, text) in DESKTOP_CAPTION_TEXTS.iter().enumerate() {
-        let (cw, ch, bytes) = rasterize_caption_line_bgra(&font_ui_sans, text, cap_px);
+        let (cw, ch, bytes) = ui_font.caption(text, cap_px);
         max_cap_h = max_cap_h.max(ch);
         let fname = format!("desktop_caption_{i}.bgra");
         std::fs::write(out_dir.join(&fname), &bytes).expect("write caption bgra");
@@ -620,7 +752,7 @@ pub static DEFAULT_WALLPAPER_BGRA: &[u8] = include_bytes!(concat!(env!("OUT_DIR"
 
     let menu_row_px = 15.0f32;
     for (i, text) in START_MENU_LABEL_TEXTS.iter().enumerate() {
-        let (cw, ch, bytes) = rasterize_menu_label_line_bgra(&font_ui_sans, text, menu_row_px);
+        let (cw, ch, bytes) = ui_font.menu(text, menu_row_px);
         let fname = format!("start_menu_label_{i}.bgra");
         std::fs::write(out_dir.join(&fname), &bytes).expect("write start menu label bgra");
         icon_rs.push_str(&format!(
@@ -641,7 +773,7 @@ pub static DEFAULT_WALLPAPER_BGRA: &[u8] = include_bytes!(concat!(env!("OUT_DIR"
     ));
     let ex_px = 13.0f32;
     for (i, text) in EXPLORER_ROW_LABEL_TEXTS.iter().enumerate() {
-        let (cw, ch, bytes) = rasterize_menu_label_line_bgra(&font_ui_sans, text, ex_px);
+        let (cw, ch, bytes) = ui_font.menu(text, ex_px);
         let fname = format!("explorer_row_label_{i}.bgra");
         std::fs::write(out_dir.join(&fname), &bytes).expect("write explorer row label bgra");
         icon_rs.push_str(&format!(
@@ -657,7 +789,7 @@ pub static DEFAULT_WALLPAPER_BGRA: &[u8] = include_bytes!(concat!(env!("OUT_DIR"
     ));
     let title_px = 14.0f32;
     for (i, text) in WINDOW_TITLE_TEXTS.iter().enumerate() {
-        let (cw, ch, bytes) = rasterize_menu_label_line_bgra(&font_ui_sans, text, title_px);
+        let (cw, ch, bytes) = ui_font.menu(text, title_px);
         let fname = format!("window_title_{i}.bgra");
         std::fs::write(out_dir.join(&fname), &bytes).expect("write window title bgra");
         icon_rs.push_str(&format!(
@@ -670,7 +802,7 @@ pub static DEFAULT_WALLPAPER_BGRA: &[u8] = include_bytes!(concat!(env!("OUT_DIR"
     let menu_px = 17.0f32;
     icon_rs.push_str("pub const CONTEXT_MENU_LABEL_COUNT: usize = 3;\n");
     for (i, text) in CONTEXT_MENU_LABEL_TEXTS.iter().enumerate() {
-        let (cw, ch, bytes) = rasterize_menu_label_line_bgra(&font_ui_sans, text, menu_px);
+        let (cw, ch, bytes) = ui_font.menu(text, menu_px);
         let fname = format!("context_menu_label_{i}.bgra");
         std::fs::write(out_dir.join(&fname), &bytes).expect("write context menu label bgra");
         icon_rs.push_str(&format!(
@@ -680,11 +812,11 @@ pub static DEFAULT_WALLPAPER_BGRA: &[u8] = include_bytes!(concat!(env!("OUT_DIR"
         ));
     }
 
-    let mut ascii_rs = String::from("// @generated by nt10-kernel/build.rs — 8×8 bitmask rows for ASCII 32..=126 (Noto Sans)\n");
+    let mut ascii_rs = String::from("// @generated by nt10-kernel/build.rs — 8×8 bitmask rows for ASCII 32..=126 (OFL font or placeholder)\n");
     ascii_rs.push_str("pub const FONT_GLYPH_COUNT: usize = 95;\n");
     ascii_rs.push_str("pub static FONT_GLYPH_MASKS: [[u8; 8]; 95] = [\n");
     for cp in 32u8..=126u8 {
-        let rows = glyph_mask_8x8(&font_ui_sans, cp as char);
+        let rows = ui_font.glyph8(cp as char);
         ascii_rs.push_str(&format!(
             "    [{},{},{},{},{},{},{},{}],\n",
             rows[0], rows[1], rows[2], rows[3], rows[4], rows[5], rows[6], rows[7]

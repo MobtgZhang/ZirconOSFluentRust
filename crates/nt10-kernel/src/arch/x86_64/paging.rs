@@ -3,6 +3,8 @@
 use core::arch::asm;
 use core::sync::atomic::{AtomicU64, Ordering};
 
+use super::msr;
+
 const PD_COUNT: usize = 1;
 const PD_ENTRIES: usize = 256; // 256 * 2 MiB = 512 MiB
 
@@ -99,6 +101,41 @@ pub fn flush_tlb_all() {
 
 /// PTE bit 63: no-execute when `EFER.NXE` is set (Intel SDM).
 pub const PTE_NX: u64 = 1u64 << 63;
+
+const IA32_EFER: u32 = 0xC000_0080;
+const EFER_NXE: u64 = 1 << 11;
+
+/// Current `CR3` (PML4 physical base).
+#[must_use]
+pub fn read_cr3() -> u64 {
+    let v: u64;
+    unsafe {
+        asm!("mov {}, cr3", out(reg) v, options(nomem, nostack));
+    }
+    v
+}
+
+/// Load a new PML4 physical base (full TLB invalidation except global; bring-up only).
+///
+/// # Safety
+/// `pa` must be 4 KiB-aligned and point to a valid PML4; current RIP/stack must remain mapped.
+#[inline]
+pub unsafe fn write_cr3(pa: u64) {
+    unsafe {
+        asm!("mov cr3, {}", in(reg) pa, options(nomem, nostack));
+    }
+}
+
+/// Enable `EFER.NXE` so PTE bit 63 is treated as no-execute.
+///
+/// # Safety
+/// Must run on x86_64 before relying on NX PTEs; harmless if already set.
+pub unsafe fn enable_nxe() {
+    let efer = unsafe { msr::rdmsr(IA32_EFER) };
+    unsafe {
+        msr::wrmsr(IA32_EFER, efer | EFER_NXE);
+    }
+}
 
 /// Apply or clear NX on a leaf PTE value (bring-up helper; does not flush TLB).
 #[must_use]
