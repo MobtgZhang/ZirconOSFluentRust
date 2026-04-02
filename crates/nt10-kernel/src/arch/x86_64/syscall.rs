@@ -1,27 +1,95 @@
 //! SYSCALL/SYSRET; syscall dispatch table (original layout, public MSR names).
+//!
+//! User `syscall` convention (bring-up): `%rax` = number; `%rdi`,`%rsi`,`%rdx`,`%r10`,`%r8`,`%r9` = args.
+//! Return value in `%rax` (sign-extended `i32` from [`zircon_syscall_from_user`]).
 
 use core::arch::global_asm;
+
+use crate::ke::spinlock::SpinLock;
 
 extern "C" {
     fn zircon_syscall_entry();
 }
 
-/// Invoked from [`zircon_syscall_entry`] with the user syscall number in `%rdi`.
+/// Sentinel matching [`SyscallTable::dispatch`] when the slot is empty.
+pub const ZR_STATUS_NOT_IMPLEMENTED: i32 = -1_073_741_822;
+
+static ZR_SYSCALL_STATE: SpinLock<SyscallTable> = SpinLock::new(SyscallTable::empty());
+
+pub fn zr_syscall_register(index: u16, f: SyscallFn) -> Result<(), ()> {
+    ZR_SYSCALL_STATE.lock().register(index, f)
+}
+
+#[must_use]
+pub fn zr_syscall_dispatch(
+    index: u16,
+    a1: u64,
+    a2: u64,
+    a3: u64,
+    a4: u64,
+    a5: u64,
+    a6: u64,
+) -> i32 {
+    ZR_SYSCALL_STATE.lock().dispatch(index, a1, a2, a3, a4, a5, a6)
+}
+
+/// Invoked from [`zircon_syscall_entry`]: `num` + six guest GPR arguments.
 #[no_mangle]
-extern "C" fn zircon_syscall_from_user(_num: u64) {
-    crate::hal::x86_64::serial::write_line(b"nt10-kernel: user syscall smoke\r\n");
+extern "C" fn zircon_syscall_from_user(
+    num: u64,
+    a1: u64,
+    a2: u64,
+    a3: u64,
+    a4: u64,
+    a5: u64,
+) -> i64 {
+    let r = zr_syscall_dispatch(num as u16, a1, a2, a3, a4, a5, 0);
+    if r == ZR_STATUS_NOT_IMPLEMENTED {
+        crate::hal::x86_64::serial::write_line(b"nt10-kernel: user syscall smoke\r\n");
+        crate::hal::x86_64::serial::write_bytes(b"nt10-kernel: syscall num ");
+        crate::hal::x86_64::serial::write_hex_u64(num);
+        crate::hal::x86_64::serial::write_line(b" return\r\n");
+    }
+    r as i64
 }
 
 global_asm!(
     r#"
+    .pushsection .bss
+    .p2align 12
+    zr_sc_stack:
+        .space 4096
+    zr_sc_stack_top:
+    .popsection
     .globl zircon_syscall_entry
+    .align 16
     zircon_syscall_entry:
+        mov r12, rax
+        mov rbx, rsp
+        lea rsp, [rip + zr_sc_stack_top]
+        push rbx
         push rcx
         push r11
-        mov rdi, rax
+        push r9
+        push r8
+        push r10
+        push rdx
+        push rsi
+        push rdi
+        mov rdi, r12
+        mov rsi, [rsp]
+        mov rdx, [rsp + 8]
+        mov rcx, [rsp + 16]
+        mov r8, [rsp + 24]
+        mov r9, [rsp + 32]
+        sub rsp, 40
         call zircon_syscall_from_user
+        add rsp, 40
+        add rsp, 48
         pop r11
         pop rcx
+        pop rbx
+        mov rsp, rbx
         sysretq
     "#,
 );
@@ -35,8 +103,8 @@ pub const MSR_IA32_LSTAR: u32 = 0xC000_0082;
 /// `IA32_FMASK`
 pub const MSR_IA32_FMASK: u32 = 0xC000_0084;
 
-/// Upper bound for syscall numbers reserved in this bring-up table.
-pub const SYSCALL_TABLE_LEN: usize = 256;
+/// Upper bound for syscall numbers reserved in this bring-up table (Win32 bring-up uses `0x100`..).
+pub const SYSCALL_TABLE_LEN: usize = 512;
 
 /// Syscall handler: raw args from registers (extend later with trap frame).
 pub type SyscallFn = fn(u64, u64, u64, u64, u64, u64) -> i32;
@@ -48,10 +116,15 @@ pub struct SyscallTable {
 
 impl SyscallTable {
     #[must_use]
-    pub fn new() -> Self {
+    pub const fn empty() -> Self {
         Self {
-            entries: core::array::from_fn(|_| None),
+            entries: [None; SYSCALL_TABLE_LEN],
         }
+    }
+
+    #[must_use]
+    pub fn new() -> Self {
+        Self::empty()
     }
 
     pub fn register(&mut self, index: u16, f: SyscallFn) -> Result<(), ()> {
