@@ -146,18 +146,18 @@ fn phase3_probe_wndproc(
 pub fn phase3_message_pump_serial_smoke() {
     use super::msg_dispatch;
     use super::windowing::{create_window_ex_on_desktop, register_class_ex_bringup};
-    use crate::hal::x86_64::serial;
     use crate::ob::winsta::DesktopObject;
+    use crate::rtl::log::{log_line_serial, SUB_SUBS};
 
     PHASE3_WNDPROC_HIT.store(false, Ordering::SeqCst);
-    serial::write_line(b"nt10-kernel: Phase3 msg pump smoke begin\r\n");
+    log_line_serial(SUB_SUBS, b"Phase3 msg pump smoke begin");
     let mut desktop = DesktopObject::new();
     let dptr = NonNull::from(&mut desktop);
     let tid = 1u32;
     msg_dispatch::set_current_thread_for_win32(tid);
     msg_dispatch::thread_bind_desktop(tid, dptr);
     let Ok(atom) = register_class_ex_bringup(0, 0x70) else {
-        serial::write_line(b"nt10-kernel: Phase3 msg pump smoke FAIL (class)\r\n");
+        log_line_serial(SUB_SUBS, b"Phase3 msg pump smoke FAIL (class)");
         return;
     };
     let Ok(hwnd) = create_window_ex_on_desktop(
@@ -167,19 +167,19 @@ pub fn phase3_message_pump_serial_smoke() {
         tid,
         phase3_probe_wndproc,
     ) else {
-        serial::write_line(b"nt10-kernel: Phase3 msg pump smoke FAIL (create)\r\n");
+        log_line_serial(SUB_SUBS, b"Phase3 msg pump smoke FAIL (create)");
         return;
     };
     if msg_dispatch::phase3_message_pump_integration(tid, unsafe { dptr.as_ref() }, hwnd).is_err() {
-        serial::write_line(b"nt10-kernel: Phase3 msg pump smoke FAIL (integration)\r\n");
+        log_line_serial(SUB_SUBS, b"Phase3 msg pump smoke FAIL (integration)");
         return;
     }
     if !PHASE3_WNDPROC_HIT.load(Ordering::SeqCst) {
-        serial::write_line(b"nt10-kernel: Phase3 msg pump smoke FAIL (wndproc)\r\n");
+        log_line_serial(SUB_SUBS, b"Phase3 msg pump smoke FAIL (wndproc)");
         return;
     }
-    serial::write_line(b"nt10-kernel: Phase3 WndProc dispatched\r\n");
-    serial::write_line(b"nt10-kernel: Phase3 msg pump smoke OK\r\n");
+    log_line_serial(SUB_SUBS, b"Phase3 WndProc dispatched");
+    log_line_serial(SUB_SUBS, b"Phase3 msg pump smoke OK");
 }
 
 /// Phase 4: offscreen surface + bitmap text + software composite into a mock framebuffer (x86_64 serial).
@@ -189,17 +189,17 @@ pub fn phase4_compositor_serial_smoke() {
     use super::msg_dispatch;
     use super::text_bringup::text_out_ascii;
     use super::windowing::{create_window_ex_on_desktop, register_class_ex_bringup};
-    use crate::hal::x86_64::serial;
     use crate::ob::winsta::DesktopObject;
+    use crate::rtl::log::{log_line_serial, SUB_SUBS};
 
-    serial::write_line(b"nt10-kernel: Phase4 compositor smoke begin\r\n");
+    log_line_serial(SUB_SUBS, b"Phase4 compositor smoke begin");
     let mut desktop = DesktopObject::new();
     let dptr = NonNull::from(&mut desktop);
     let tid = 1u32;
     msg_dispatch::set_current_thread_for_win32(tid);
     msg_dispatch::thread_bind_desktop(tid, dptr);
     let Ok(atom) = register_class_ex_bringup(0, 0x71) else {
-        serial::write_line(b"nt10-kernel: Phase4 compositor smoke FAIL (class)\r\n");
+        log_line_serial(SUB_SUBS, b"Phase4 compositor smoke FAIL (class)");
         return;
     };
     let Ok(hwnd) = create_window_ex_on_desktop(
@@ -209,11 +209,11 @@ pub fn phase4_compositor_serial_smoke() {
         tid,
         super::windowing::def_window_proc_bringup,
     ) else {
-        serial::write_line(b"nt10-kernel: Phase4 compositor smoke FAIL (create)\r\n");
+        log_line_serial(SUB_SUBS, b"Phase4 compositor smoke FAIL (create)");
         return;
     };
     let Some(si) = desktop.hwnd_slot_index(hwnd) else {
-        serial::write_line(b"nt10-kernel: Phase4 compositor smoke FAIL (slot)\r\n");
+        log_line_serial(SUB_SUBS, b"Phase4 compositor smoke FAIL (slot)");
         return;
     };
     super::window_surface::fill_surface_solid(si as usize, [40, 80, 120, 255]);
@@ -231,10 +231,10 @@ pub fn phase4_compositor_serial_smoke() {
     .is_err()
         || !fb.iter().any(|&b| b != 0)
     {
-        serial::write_line(b"nt10-kernel: Phase4 compositor smoke FAIL (composite)\r\n");
+        log_line_serial(SUB_SUBS, b"Phase4 compositor smoke FAIL (composite)");
         return;
     }
-    serial::write_line(b"nt10-kernel: Phase4 compositor smoke OK\r\n");
+    log_line_serial(SUB_SUBS, b"Phase4 compositor smoke OK");
 }
 
 /// Bring-up: Win32 syscalls, CSR connect, Phase 3/4 serial smoke (x86_64).
