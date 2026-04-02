@@ -2,7 +2,7 @@
 name = "nt10-kernel-bin"
 version = "0.0.0"
 edition.workspace = true
-description = "ZirconOS NT10 kernel ELF (low physical entry) for QEMU -kernel smoke tests"
+description = "ZirconOSFluent NT10 kernel ELF (low physical entry) for QEMU -kernel smoke tests"
 license.workspace = true
 repository.workspace = true
 autobins = false

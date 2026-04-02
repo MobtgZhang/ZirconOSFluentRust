@@ -1,5 +1,5 @@
 //! Low-address kernel image entry (`_start` → `nt10_kernel::kmain`).
-//! Linked at physical 1 MiB ([`link/x86_64-uefi-load.ld`](../../../link/x86_64-uefi-load.ld)).
+//! Linked at physical **128 MiB** ([`link/x86_64-uefi-load.ld`](../../../link/x86_64-uefi-load.ld)).
 //!
 //! Boot contract: `ZirconBootInfo *` in `%rdi` when launched from ZBM10; garbage or null is OK for
 //! bring-up (handoff is validated in [`nt10_kernel::kmain::kmain_entry`]).
