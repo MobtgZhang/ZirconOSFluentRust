@@ -16,7 +16,7 @@ fn repo_root() -> PathBuf {
 fn print_help() {
     eprintln!(
         "\
-ZirconOS xtask — dev helpers
+ZirconOSFluent xtask — dev helpers
 
 Usage:
   cargo run -p xtask -- <command> [args...]
