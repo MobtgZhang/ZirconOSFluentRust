@@ -1,12 +1,12 @@
-# ZirconOS NT10 架构总览
+# ZirconOSFluent 架构总览（NT 10.0）
 
 **English**: [../en/Architecture.md](../en/Architecture.md)
 
-> **免责声明**：ZirconOS 与 Microsoft 无关联。「Windows」「Windows 10」等商标归 Microsoft Corporation 所有；本文仅描述技术对标目标。
+> **免责声明**：ZirconOSFluent 与 Microsoft 无关联。「Windows」「Windows 10」等商标归 Microsoft Corporation 所有；本文仅描述技术对标目标。
 
 ## 1. 项目定位
 
-**ZirconOS NT10**（在本仓库品牌下亦称 **ZirconOSFluent** 所服务的内核代际目标）以 **Windows NT 10.0.19045**（Windows 10 21H2，主线内核末版）为设计参照，计划用 **Rust**（主体）与少量 **汇编**（`global_asm!` 或独立 `.S`，架构相关）从零实现可维护、可扩展的 NT 语义内核。
+**ZirconOSFluent** 是本仓库的对外品牌；内核实现代号为 **NT10**，以 **Windows NT 10.0.19045**（Windows 10 21H2，仓库当前文档与 syscall 文档化的固定对标构建）为设计参照，使用 **Rust**（主体）与少量 **汇编**（`global_asm!` 或独立 `.S`）实现可维护、可扩展的 NT 语义内核。**本仓库仅面向 NT 10.0 代际能力，不包含 Windows NT 6.x 兼容或迁移目标。**
 
 **核心取向**：
 
@@ -15,22 +15,21 @@
 - **现代安全**：规划 VBS、HVCI、Secure Boot、TPM 2.0 抽象等（见 [Virtualization-Security-WinRT.md](Virtualization-Security-WinRT.md)）。
 - **Rust 工程化**：以类型系统、`unsafe` 边界文档化、`repr(C)` 布局敏感结构、受控分配（可选 `allocator_api` / 自定义池）降低未定义行为风险。
 
-**上游参考**（架构母版中提及）：ZirconOSAero（NT 6.1）。
+## 2. NT 10.0 设计要点（单一代际目标）
 
-## 2. 与 NT 6.1（ZirconOSAero）的主要差异
+下列为 **对标 NT 10.0** 时主动纳入的设计维度（非与旧代际的差异对照表）：
 
-| 特性 | NT 6.1 | NT 10.0（目标） |
-|------|--------|-----------------|
-| 引导 | ZBM（BIOS/MBR + UEFI） | **仅 UEFI**，ZBM10 |
-| 系统调用表 | NT 6.1 编号 | **NT 10**（19041 基准） |
-| IPC | LPC | **ALPC** |
-| 显示 | XPDM / WDDM 1.x | **WDDM 2.x**（D3D12 感知） |
-| 安全 | 令牌、SID、ACL | + VBS / HVCI / CET / CFG |
-| 虚拟化 | 无 | **Hyper-V 感知层** |
-| 运行时 | Win32 为主 | Win32 + **WinRT / UWP AppModel** |
-| WOW64 | PE32 → PE32+ | **x86/ARM32 → x64/ARM64** |
-| 页表 | 4 级（IA-32e） | 4 / **5 级 LA57（可选）** |
-| 桌面视觉 | Aero | **Fluent**（Acrylic / Mica） |
+| 维度 | NT 10.0 向目标 |
+|------|----------------|
+| 引导 | **仅 UEFI**，ZBM10 |
+| IPC | **ALPC** |
+| 显示 | **WDDM 2.x**（D3D12 感知）与 Fluent 桌面方向 |
+| 安全 | 令牌、SID、ACL，并规划 VBS / HVCI / CET / CFG |
+| 虚拟化 | **Hyper-V 感知层** |
+| 运行时 | Win32 + **WinRT / UWP AppModel**（长期） |
+| WOW64 | **x86/ARM32 → x64/ARM64** thunk 方向 |
+| 页表 | 4 级为主，**5 级 LA57** 可选 |
+| 系统调用编号 | 项目自有 ABI（见 [Syscall-ABI-ZirconOS.md](Syscall-ABI-ZirconOS.md)），文档化基准 **19041**，**不追求与任意 Windows 构建二进制一致** |
 
 ## 3. 分层架构（目标）
 

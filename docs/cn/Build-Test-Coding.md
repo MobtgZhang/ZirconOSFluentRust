@@ -44,14 +44,14 @@ cargo kcheck
 
 | 脚本 | 说明 |
 |------|------|
-| [`scripts/run-qemu-x86_64.sh`](../../scripts/run-qemu-x86_64.sh) | QEMU + OVMF；默认调用 [`scripts/pack-esp.sh`](../../scripts/pack-esp.sh) 生成含 `BOOTX64.EFI` 与 `EFI/ZirconOS/NT10KRNL.BIN` 的 ESP；环境变量 `PROFILE=release` 时临时 ESP 使用 release 产物 |
+| [`scripts/run-qemu-x86_64.sh`](../../scripts/run-qemu-x86_64.sh) | QEMU + OVMF；默认调用 [`scripts/pack-esp.sh`](../../scripts/pack-esp.sh) 生成含 `BOOTX64.EFI` 与 `EFI/ZirconOSFluent/NT10KRNL.BIN` 的 ESP；环境变量 `PROFILE=release` 时临时 ESP 使用 release 产物 |
 | [`scripts/pack-esp.sh`](../../scripts/pack-esp.sh) | 构建 `zbm10.efi` 与扁平内核二进制并写入指定目录；`PROFILE=release` 等价于 `cargo --release` |
 | [`xtask/`](../../xtask/) | `cargo run -p xtask -- build|pack-esp|qemu|qemu-kernel` 封装上述脚本与构建（`--release` 会设置 `PROFILE=release`） |
 | [`scripts/generate-resource-icons.py`](../../scripts/generate-resource-icons.py) | 自 `resources/icons/_sources/` 导出多尺寸 PNG（需 `pip install pillow`） |
 
 ISO 镜像生成仍为后续规划；**xtask** 已提供 `build` / `pack-esp` / `qemu` 入口。
 
-**UEFI 临时 ESP 布局**（[`scripts/pack-esp.sh`](../../scripts/pack-esp.sh)）：`EFI/BOOT/BOOTX64.EFI`（ZBM10）、`EFI/ZirconOS/NT10KRNL.BIN`（扁平内核）、根目录 `startup.nsh`（缓解部分 OVMF 在 QEMU `fat:` 盘上默认启动项 `Unsupported`、进入 Shell 后可自动拉起 `BOOTX64.EFI`）。可选 `EFI/ZirconOS/zbm10.cfg`（如 `kernel=MYKRNL.BIN`）。OVMF：合并镜像用 QEMU `-bios`；分体 `*CODE*.fd` 与同目录 `OVMF_VARS.fd` 组成双 pflash（见 [`run-qemu-x86_64.sh`](../../scripts/run-qemu-x86_64.sh)）。
+**UEFI 临时 ESP 布局**（[`scripts/pack-esp.sh`](../../scripts/pack-esp.sh)）：`EFI/BOOT/BOOTX64.EFI`（ZBM10）、`EFI/ZirconOSFluent/NT10KRNL.BIN`（扁平内核）、根目录 `startup.nsh`（缓解部分 OVMF 在 QEMU `fat:` 盘上默认启动项 `Unsupported`、进入 Shell 后可自动拉起 `BOOTX64.EFI`）。可选 `EFI/ZirconOSFluent/zbm10.cfg`（如 `kernel=MYKRNL.BIN`）。OVMF：合并镜像用 QEMU `-bios`；分体 `*CODE*.fd` 与同目录 `OVMF_VARS.fd` 组成双 pflash（见 [`run-qemu-x86_64.sh`](../../scripts/run-qemu-x86_64.sh)）。
 
 **LoongArch UEFI**：上游 `r-efi` 支持 `loongarch64-unknown-uefi` 时，可在本工作区对 `nt10-boot-uefi` 增加对应 target 与链接脚本（与 x86_64 流程对称）。
 

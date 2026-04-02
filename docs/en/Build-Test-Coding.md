@@ -44,14 +44,14 @@ cargo kcheck
 
 | Script | Role |
 |--------|------|
-| [`scripts/run-qemu-x86_64.sh`](../../scripts/run-qemu-x86_64.sh) | QEMU + OVMF; by default runs [`scripts/pack-esp.sh`](../../scripts/pack-esp.sh) to build an ESP with `BOOTX64.EFI` and `EFI/ZirconOS/NT10KRNL.BIN`; `PROFILE=release` uses release artifacts for the temp ESP |
+| [`scripts/run-qemu-x86_64.sh`](../../scripts/run-qemu-x86_64.sh) | QEMU + OVMF; by default runs [`scripts/pack-esp.sh`](../../scripts/pack-esp.sh) to build an ESP with `BOOTX64.EFI` and `EFI/ZirconOSFluent/NT10KRNL.BIN`; `PROFILE=release` uses release artifacts for the temp ESP |
 | [`scripts/pack-esp.sh`](../../scripts/pack-esp.sh) | Builds `zbm10.efi` and a flat kernel `.BIN` into a given ESP directory; `PROFILE=release` maps to `cargo --release` |
 | [`xtask/`](../../xtask/) | `cargo run -p xtask -- build|pack-esp|qemu|qemu-kernel` wraps the scripts (`--release` sets `PROFILE=release`) |
 | [`scripts/generate-resource-icons.py`](../../scripts/generate-resource-icons.py) | Exports multi-size PNGs from `resources/icons/_sources/` (`pip install pillow`) |
 
 ISO generation remains future work; **xtask** provides `build` / `pack-esp` / `qemu` entry points.
 
-**UEFI temp ESP layout** ([`scripts/pack-esp.sh`](../../scripts/pack-esp.sh)): `EFI/BOOT/BOOTX64.EFI` (ZBM10), `EFI/ZirconOS/NT10KRNL.BIN` (flat kernel), root `startup.nsh` (helps when OVMF returns `Unsupported` for QEMU `fat:` default boot and the Shell countdown runs `BOOTX64.EFI`). Optional `EFI/ZirconOS/zbm10.cfg` (e.g. `kernel=MYKRNL.BIN`). OVMF: monolithic firmware uses QEMU `-bios`; split `*CODE*.fd` pairs with `OVMF_VARS.fd` as dual pflash (see [`run-qemu-x86_64.sh`](../../scripts/run-qemu-x86_64.sh)).
+**UEFI temp ESP layout** ([`scripts/pack-esp.sh`](../../scripts/pack-esp.sh)): `EFI/BOOT/BOOTX64.EFI` (ZBM10), `EFI/ZirconOSFluent/NT10KRNL.BIN` (flat kernel), root `startup.nsh` (helps when OVMF returns `Unsupported` for QEMU `fat:` default boot and the Shell countdown runs `BOOTX64.EFI`). Optional `EFI/ZirconOSFluent/zbm10.cfg` (e.g. `kernel=MYKRNL.BIN`). OVMF: monolithic firmware uses QEMU `-bios`; split `*CODE*.fd` pairs with `OVMF_VARS.fd` as dual pflash (see [`run-qemu-x86_64.sh`](../../scripts/run-qemu-x86_64.sh)).
 
 **LoongArch UEFI**: when `r-efi` and Rust expose `loongarch64-unknown-uefi`, add a matching target and linker script for `nt10-boot-uefi` alongside x86_64.
 

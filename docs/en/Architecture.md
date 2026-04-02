@@ -1,12 +1,12 @@
-# ZirconOS NT10 architecture overview
+# ZirconOSFluent architecture overview (NT 10.0)
 
 **中文**：[../cn/Architecture.md](../cn/Architecture.md)
 
-> **Disclaimer**: ZirconOS is not affiliated with Microsoft. “Windows” and “Windows 10” are trademarks of Microsoft Corporation; this text describes compatibility goals only.
+> **Disclaimer**: ZirconOSFluent is not affiliated with Microsoft. “Windows” and “Windows 10” are trademarks of Microsoft Corporation; this text describes compatibility goals only.
 
 ## 1. Project positioning
 
-**ZirconOS NT10** (the kernel generation this repo’s **ZirconOSFluent** work targets) uses **Windows NT 10.0.19045** (Windows 10 21H2, last mainstream kernel build) as a design reference, implemented primarily in **Rust** with a small amount of **assembly** (`global_asm!` or standalone `.S`) for low-level architecture code.
+**ZirconOSFluent** is the public project name; the kernel effort is **NT10**, using **Windows NT 10.0.19045** (Windows 10 21H2—the repo’s fixed documentation / syscall baseline) as the design reference, implemented primarily in **Rust** with a small amount of **assembly** (`global_asm!` or standalone `.S`). **This repository targets NT 10.0-era capabilities only; there is no Windows NT 6.x compatibility or migration goal.**
 
 **Core direction**:
 
@@ -15,22 +15,21 @@
 - **Modern security**: VBS, HVCI, Secure Boot, TPM 2.0 abstractions (see [Virtualization-Security-WinRT.md](Virtualization-Security-WinRT.md)).
 - **Rust engineering**: types, documented `unsafe` boundaries, `repr(C)` for layout-sensitive structures, controlled allocation (custom pools / future `allocator` traits) to reduce UB.
 
-**Upstream reference** (from the draft): ZirconOSAero (NT 6.1).
+## 2. NT 10.0 design pillars (single generation)
 
-## 2. Main differences vs NT 6.1
+Dimensions intentionally in scope when aligning with **NT 10.0** (not a diff table vs older NT):
 
-| Area | NT 6.1 | NT 10.0 (target) |
-|------|--------|------------------|
-| Boot | ZBM (BIOS/MBR + UEFI) | **UEFI only**, ZBM10 |
-| Syscalls | NT 6.1 numbers | **NT 10** (19041 baseline) |
-| IPC | LPC | **ALPC** |
-| Display | XPDM / WDDM 1.x | **WDDM 2.x** (D3D12-aware) |
-| Security | Token, SID, ACL | + VBS / HVCI / CET / CFG |
-| Virtualization | none | **Hyper-V awareness** |
-| Runtime | Win32-first | Win32 + **WinRT / UWP AppModel** |
-| WOW64 | PE32 → PE32+ | **x86/ARM32 → x64/ARM64** |
-| Paging | 4-level | 4 / **5-level LA57 (optional)** |
-| Desktop | Aero | **Fluent** (Acrylic / Mica) |
+| Area | NT 10.0-oriented target |
+|------|-------------------------|
+| Boot | **UEFI only**, ZBM10 |
+| IPC | **ALPC** |
+| Display | **WDDM 2.x** (D3D12-aware) and Fluent desktop direction |
+| Security | Token, SID, ACL, plus VBS / HVCI / CET / CFG (planned) |
+| Virtualization | **Hyper-V awareness** |
+| Runtime | Win32 + **WinRT / UWP AppModel** (long term) |
+| WOW64 | **x86/ARM32 → x64/ARM64** thunk direction |
+| Paging | 4-level primary, **5-level LA57** optional |
+| Syscall numbering | Project-local ABI ([Syscall-ABI-ZirconOS.md](Syscall-ABI-ZirconOS.md)), **19041** as doc baseline; **not** binary-identical to any Windows build |
 
 ## 3. Layered architecture (target)
 

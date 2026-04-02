@@ -2,7 +2,7 @@
 
 **中文**：[../cn/References-Policy.md](../cn/References-Policy.md)
 
-This project may vendor or clone **read-only** trees under `references/` for local lookup. **They are not part of the ZirconOS license for your contributions** unless explicitly stated.
+This project may vendor or clone **read-only** trees under `references/` for local lookup. **They are not part of the ZirconOSFluent repo license for your contributions** unless explicitly stated.
 
 ## `references/win32` (Microsoft Learn–style content)
 
@@ -20,4 +20,4 @@ This project may vendor or clone **read-only** trees under `references/` for loc
 ## Implementation rule of thumb
 
 - **Standards**: UEFI, ACPI, SMBIOS, PE/COFF — cite the standard by name when it matters; implement from the spec’s semantics, not from copyrighted prose.
-- **Rust modules**: document **ZirconOS** behavior in module and item docs; point to [PROCESS_NT10.md](PROCESS_NT10.md) for workflow.
+- **Rust modules**: document **ZirconOSFluent** behavior in module and item docs; point to [PROCESS_NT10.md](PROCESS_NT10.md) for workflow.
