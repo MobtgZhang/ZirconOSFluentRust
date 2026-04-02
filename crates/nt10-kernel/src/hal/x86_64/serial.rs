@@ -46,3 +46,22 @@ pub fn write_line(s: &[u8]) {
     write_byte(b'\r');
     write_byte(b'\n');
 }
+
+/// Lowercase hex (no `0x` prefix).
+pub fn write_hex_u64(mut v: u64) {
+    write_byte(b'0');
+    write_byte(b'x');
+    let mut buf = [0u8; 16];
+    let mut i = buf.len();
+    if v == 0 {
+        write_byte(b'0');
+        return;
+    }
+    while v > 0 && i > 0 {
+        i -= 1;
+        let d = (v & 0xF) as u8;
+        buf[i] = if d < 10 { b'0' + d } else { b'a' + (d - 10) };
+        v >>= 4;
+    }
+    write_bytes(&buf[i..]);
+}
