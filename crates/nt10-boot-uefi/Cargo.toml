@@ -2,7 +2,7 @@
 name = "nt10-boot-uefi"
 version = "0.0.0"
 edition.workspace = true
-description = "UEFI ZBM10 boot manager (see ideas/ZirconOS_NT10_Architecture.md §5)"
+description = "UEFI ZBM10 boot manager for ZirconOSFluent NT10 (see ideas/ZirconOS_NT10_Architecture.md §5)"
 license.workspace = true
 repository.workspace = true
 autobins = false

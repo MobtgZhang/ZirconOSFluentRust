@@ -5,8 +5,13 @@
 #![no_main]
 
 mod boot_config;
+mod boot_font;
 mod boot_menu;
+mod boot_nv;
 mod boot_rng;
+mod boot_ui_gfx;
+mod chainload;
+mod pointer_input;
 mod secure_boot;
 
 use core::ffi::c_void;
@@ -327,7 +332,7 @@ fn kernel_name_to_ucs2(name: &str, out: &mut [efi::Char16]) -> Result<usize, efi
     Ok(b.len() + 1)
 }
 
-/// UCS-2 path under `EFI\ZirconOS\<kernel>` on the FAT volume that holds `BOOTX64.EFI`.
+/// UCS-2 path under `EFI\ZirconOSFluent\<kernel>` on the FAT volume that holds `BOOTX64.EFI`.
 unsafe fn open_kernel_file(
     st: *mut efi::SystemTable,
     image: efi::Handle,
@@ -373,8 +378,10 @@ unsafe fn open_kernel_file(
     }
 
     let mut z_dir: *mut file::Protocol = ptr::null_mut();
-    let mut name_zircon: [efi::Char16; 9] = [
-        0x005a, 0x0069, 0x0072, 0x0063, 0x006f, 0x006e, 0x004f, 0x0053, 0,
+    // "ZirconOSFluent"
+    let mut name_zircon: [efi::Char16; 15] = [
+        0x005a, 0x0069, 0x0072, 0x0063, 0x006f, 0x006e, 0x004f, 0x0053, 0x0046, 0x006c, 0x0075, 0x0065,
+        0x006e, 0x0074, 0,
     ];
     let r = ((*efi_dir).open)(
         efi_dir,
@@ -510,19 +517,28 @@ pub extern "C" fn efi_main(image: efi::Handle, st: *mut efi::SystemTable) -> efi
         return e;
     }
 
-    let zcfg = unsafe { boot_config::load_zbm10_cfg(st, image) };
-    let kernel_path = zcfg.kernel_name_str().unwrap_or(DEFAULT_KERNEL_FILE);
+    let mut zcfg = unsafe { boot_config::load_zbm10_cfg(st, image) };
+    let mut kernel_path_buf = [0u8; boot_config::NAME_MAX];
+    let kernel_path = {
+        let s = zcfg.kernel_name_str().unwrap_or(DEFAULT_KERNEL_FILE).as_bytes();
+        let n = s.len().min(kernel_path_buf.len());
+        kernel_path_buf[..n].copy_from_slice(&s[..n]);
+        core::str::from_utf8(&kernel_path_buf[..n]).unwrap_or(DEFAULT_KERNEL_FILE)
+    };
 
     // GOP is optional: headless QEMU (`-display none`) and some firmware builds omit
     // `EFI_GRAPHICS_OUTPUT_PROTOCOL`; failing here made `efi_main` return early so the Shell
     // looked like "the loader never ran" and Bds could report `Unsupported`.
     let gop = locate_gop(st).unwrap_or(ptr::null_mut());
 
-    if let Err(e) = unsafe { boot_menu::run_boot_menu(st, gop, kernel_path) } {
+    if let Err(e) =
+        unsafe { boot_menu::run_boot_menu(st, image, gop, kernel_path, &mut zcfg) }
+    {
         return e;
     }
 
-    let kernel_fp = match unsafe { open_kernel_file(st, image, kernel_path) } {
+    let kernel_open = zcfg.kernel_name_str().unwrap_or(DEFAULT_KERNEL_FILE);
+    let kernel_fp = match unsafe { open_kernel_file(st, image, kernel_open) } {
         Ok(p) => p,
         Err(e) => {
             con_out(st, MSG_NO_KERNEL);
