@@ -1,9 +1,15 @@
 //! Scheduler (multi-level feedback) — bring-up timer + minimal round-robin index.
-//! **Preemption:** timer IRQ bumps [`on_timer_tick`]; future MLFQ picks the next runnable at quantum end.
+//!
+//! ## Bring-up invariants (ZirconOSFluent)
+//! - Each hardware timer IRQ calls [`on_timer_tick`], which increments [`TIMER_QUANTA`]. When
+//!   [`RR_LEN`] > 0, the RR cursor advances once every [`RR_TICKS_PER_SCHED_SLICE`] ticks (software quantum).
+//! - **Preemption:** the ISR does **not** perform a full context switch; cooperative [`yield_message_wait`]
+//!   and DPC drain advance multi-threaded bring-up tests. MLFQ and real context-switch preemption are future work.
 
 use core::sync::atomic::{AtomicU32, AtomicUsize, Ordering};
 
 use crate::hal::Hal;
+use crate::rtl::log::{log_line_hal, SUB_KE};
 use crate::ke::spinlock::SpinLock;
 
 #[cfg(target_arch = "x86_64")]
@@ -32,6 +38,14 @@ static NEXT_THREAD: AtomicU32 = AtomicU32::new(1);
 /// Quantum counter (incremented each timer IRQ); future: pick next `ThreadStub`.
 static TIMER_QUANTA: AtomicU32 = AtomicU32::new(0);
 
+/// Timer ticks per RR cursor step (software scheduling slice for bring-up).
+pub const RR_TICKS_PER_SCHED_SLICE: u32 = 4;
+
+/// Back-compat alias: prefer [`RR_TICKS_PER_SCHED_SLICE`].
+pub const BRINGUP_QUANTUM_TICKS: u32 = RR_TICKS_PER_SCHED_SLICE;
+
+static RR_TICK_ACCUM: AtomicU32 = AtomicU32::new(0);
+
 const RR_CAP: usize = 8;
 static RR_READY: SpinLock<[Option<ThreadStub>; RR_CAP]> = SpinLock::new([None; RR_CAP]);
 static RR_LEN: AtomicUsize = AtomicUsize::new(0);
@@ -48,12 +62,22 @@ impl ThreadStub {
     }
 }
 
+/// True when `tick_n` (1-based count since boot) completes a new RR slice.
+#[must_use]
+pub const fn rr_should_rotate_at_tick(tick_n: u32) -> bool {
+    tick_n != 0 && tick_n % RR_TICKS_PER_SCHED_SLICE == 0
+}
+
 /// Called from the timer ISR on x86_64 (PIC IRQ0 or LAPIC timer).
 pub fn on_timer_tick() {
     TIMER_QUANTA.fetch_add(1, Ordering::Relaxed);
     let n = RR_LEN.load(Ordering::Acquire);
     if n > 0 {
-        RR_INDEX.fetch_add(1, Ordering::Relaxed);
+        let prev = RR_TICK_ACCUM.fetch_add(1, Ordering::Relaxed);
+        let t = prev.wrapping_add(1);
+        if rr_should_rotate_at_tick(t) {
+            RR_INDEX.fetch_add(1, Ordering::Relaxed);
+        }
     }
 }
 
@@ -159,10 +183,15 @@ pub fn bringup_timer_and_idle<H: Hal + ?Sized>(hal: &H) {
             if !lapic {
                 crate::hal::x86_64::pic::unmask_master_irq0();
                 crate::hal::x86_64::pit::init_channel0_periodic(11932);
-                hal.debug_write(b"nt10-kernel: PIT+PIC IRQ0 timer (vector 32)\r\n");
+                log_line_hal(hal, SUB_KE, b"PIT+PIC IRQ0 timer (vector 32)");
             } else {
-                hal.debug_write(b"nt10-kernel: LAPIC periodic timer (vector 32)\r\n");
+                log_line_hal(hal, SUB_KE, b"LAPIC periodic timer (vector 32)");
             }
+            log_line_hal(
+                hal,
+                SUB_KE,
+                b"RR bring-up: software slice = RR_TICKS_PER_SCHED_SLICE timer ticks per cursor step",
+            );
             crate::ke::apc::enqueue_bringup_sample();
             core::arch::asm!("sti", options(nomem, nostack));
         }
@@ -170,5 +199,19 @@ pub fn bringup_timer_and_idle<H: Hal + ?Sized>(hal: &H) {
     #[cfg(not(target_arch = "x86_64"))]
     {
         let _ = hal;
+    }
+}
+
+#[cfg(test)]
+mod quantum_tests {
+    use super::*;
+
+    #[test]
+    fn rr_slice_period_matches_constant() {
+        assert!(!rr_should_rotate_at_tick(0));
+        assert!(!rr_should_rotate_at_tick(1));
+        assert!(!rr_should_rotate_at_tick(3));
+        assert!(rr_should_rotate_at_tick(4));
+        assert!(rr_should_rotate_at_tick(8));
     }
 }
