@@ -7,6 +7,7 @@
 use nt10_boot_protocol::FramebufferInfo;
 
 use crate::hal::Hal;
+use crate::rtl::log::{log_compound_begin_hal, log_endline_hal, log_line_hal, SUB_VID};
 
 /// UEFI `EFI_GRAPHICS_PIXEL_FORMAT`: R,G,B,Reserved 8 bpp per channel.
 pub const GOP_PIXEL_RED_GREEN_BLUE_RESERVED_8: u32 = 0;
@@ -182,7 +183,8 @@ fn write_hex_u64<H: Hal + ?Sized>(hal: &H, mut v: u64) {
 
 /// Serial diagnostics for UEFI GOP handoff (pixel format, stride). Non-BGR layout may look wrong with current BGRA blits.
 pub fn log_uefi_framebuffer_diag<H: Hal + ?Sized>(hal: &H, fb: &FramebufferInfo) {
-    hal.debug_write(b"nt10-kernel: GOP base_phys=");
+    log_compound_begin_hal(hal, SUB_VID);
+    hal.debug_write(b"GOP base_phys=");
     write_hex_u64(hal, fb.base);
     hal.debug_write(b" size=");
     let mut n = fb.size;
@@ -207,27 +209,31 @@ pub fn log_uefi_framebuffer_diag<H: Hal + ?Sized>(hal: &H, fb: &FramebufferInfo)
     log_u32_decimal(hal, fb.pixels_per_scan_line);
     hal.debug_write(b" pixel_format=");
     write_hex_u32(hal, fb.pixel_format);
-    hal.debug_write(b"\r\n");
+    log_endline_hal(hal);
     if fb.pixel_format != GOP_PIXEL_BLUE_GREEN_RED_RESERVED_8
         && fb.pixel_format != GOP_PIXEL_RED_GREEN_BLUE_RESERVED_8
         && fb.pixel_format != GOP_PIXEL_BIT_MASK
     {
-        hal.debug_write(
-            b"nt10-kernel: GOP pixel_format is not RGB8(0), BGR8(1), or BitMask(2); blit may be wrong\r\n",
+        log_line_hal(
+            hal,
+            SUB_VID,
+            b"GOP pixel_format is not RGB8(0), BGR8(1), or BitMask(2); blit may be wrong",
         );
     } else if fb.pixel_format == GOP_PIXEL_BIT_MASK {
-        hal.debug_write(
-            b"nt10-kernel: GOP PixelBitMask(2) - using BGR8-style byte order for software blit\r\n",
+        log_line_hal(
+            hal,
+            SUB_VID,
+            b"GOP PixelBitMask(2) - using BGR8-style byte order for software blit",
         );
     } else if fb.pixel_format == GOP_PIXEL_RED_GREEN_BLUE_RESERVED_8 {
-        hal.debug_write(b"nt10-kernel: GOP pixel_format RGB8 (R-first blit path)\r\n");
+        log_line_hal(hal, SUB_VID, b"GOP pixel_format RGB8 (R-first blit path)");
     }
 }
 
 /// Write/read/write the first pixel to verify linear FB is mapped at `base` (UEFI bring-up).
 pub fn uefi_framebuffer_touch_selftest<H: Hal + ?Sized>(hal: &H, fb: &FramebufferInfo) {
     if fb.base == 0 || fb.size < 4 || fb.horizontal_resolution == 0 || fb.vertical_resolution == 0 {
-        hal.debug_write(b"nt10-kernel: GOP touch self-test skipped\r\n");
+        log_line_hal(hal, SUB_VID, b"GOP touch self-test skipped");
         return;
     }
     unsafe {
@@ -237,10 +243,12 @@ pub fn uefi_framebuffer_touch_selftest<H: Hal + ?Sized>(hal: &H, fb: &Framebuffe
         let (r, g, b) = fb_read_rgb8(fb, p);
         fb_write_opaque_rgb8(fb, p, or, og, ob);
         if r == 0x5a && g == 0xa5 && b == 0x3c {
-            hal.debug_write(b"nt10-kernel: GOP corner R/W self-test OK\r\n");
+            log_line_hal(hal, SUB_VID, b"GOP corner R/W self-test OK");
         } else {
-            hal.debug_write(
-                b"nt10-kernel: GOP corner R/W self-test FAIL (unmap or nonstandard layout)\r\n",
+            log_line_hal(
+                hal,
+                SUB_VID,
+                b"GOP corner R/W self-test FAIL (unmap or nonstandard layout)",
             );
         }
     }
