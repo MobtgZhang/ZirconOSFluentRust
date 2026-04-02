@@ -7,7 +7,7 @@ use super::pe_image::coff_section_table;
 use super::pe_image::{parse_pe64_headers, Pe64Headers, PeValidateError};
 use super::reloc::{apply_pe64_relocs, RelocError};
 use super::vfs_image::read_mount_into_buffer;
-use crate::fs::vfs::VfsTable;
+use crate::fs::vfs::{vfs_read_fat32_root_file_short, VfsTable};
 use crate::subsystems::win32::exec;
 
 #[cfg(target_arch = "x86_64")]
@@ -125,6 +125,18 @@ pub unsafe fn map_pe_image_sections_bringup(
     Ok(())
 }
 
+/// Loads a PE from a FAT32 root file (8.3 name, e.g. `b"APP     EXE"`) on `vfs` mount `slot`.
+pub fn load_pe_from_vfs_fat32_root_short(
+    vfs: &VfsTable,
+    slot: usize,
+    name11: &[u8; 11],
+    buf: &mut [u8],
+    aslr_seed: u64,
+) -> Result<PeLoadBringup, PeLoadError> {
+    let n = vfs_read_fat32_root_file_short(vfs, slot, name11, buf).map_err(|_| PeLoadError::Vfs)?;
+    finish_pe_in_buffer(buf, n, aslr_seed)
+}
+
 /// Loads from `vfs` slot into `buf`, picks a page-aligned pseudo-random base with [`aslr::image_slide`],
 /// and applies base relocations when present.
 pub fn load_pe_from_vfs_bringup(
@@ -134,6 +146,10 @@ pub fn load_pe_from_vfs_bringup(
     aslr_seed: u64,
 ) -> Result<PeLoadBringup, PeLoadError> {
     let n = read_mount_into_buffer(vfs, slot, buf).map_err(|_| PeLoadError::Vfs)?;
+    finish_pe_in_buffer(buf, n, aslr_seed)
+}
+
+fn finish_pe_in_buffer(buf: &mut [u8], n: usize, aslr_seed: u64) -> Result<PeLoadBringup, PeLoadError> {
     let headers = parse_pe64_headers(&buf[..n]).map_err(PeLoadError::Pe)?;
     if headers.size_of_image as usize > buf.len() {
         return Err(PeLoadError::ImageLargerThanBuffer);

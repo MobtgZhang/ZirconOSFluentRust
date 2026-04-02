@@ -1,4 +1,8 @@
 //! Demand paging — delegates fault handling to [`crate::mm::page_fault`].
+//!
+//! Order inside [`crate::mm::page_fault::try_dispatch_page_fault`]: **file-backed** mapped VADs
+//! (see [`crate::mm::section::SectionBacking::FileBackedStub`]) then demand-zero for anonymous
+//! committed regions.
 
 /// Best-effort demand fault (e.g. loader paths); uses current [`crate::mm::page_fault`] VAD binding.
 #[must_use]
