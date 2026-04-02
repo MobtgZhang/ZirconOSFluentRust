@@ -1,10 +1,17 @@
 //! Minimal dual-process ALPC path (single kernel): two [`crate::ps::process::ProcessId`] values and
 //! paired bounded queues (`client -> server`, `server -> client`).
 
+use core::sync::atomic::{AtomicU32, Ordering};
+
+use crate::ke::spinlock::SpinLock;
 use crate::ps::process::ProcessId;
 
 use super::message::AlpcInlineMessage;
 use super::port::AlpcPort;
+
+const CROSS_AS_BOUNCE_CAP: usize = 4096;
+static CROSS_AS_BOUNCE: SpinLock<[u8; CROSS_AS_BOUNCE_CAP]> = SpinLock::new([0u8; CROSS_AS_BOUNCE_CAP]);
+static CROSS_AS_BOUNCE_LEN: AtomicU32 = AtomicU32::new(0);
 
 /// Two-way mailbox between a designated server process and client process (bring-up).
 #[derive(Debug)]
@@ -61,9 +68,57 @@ impl AlpcDuplexLink {
     }
 }
 
-/// Placeholder for hardware-isolated ALPC: copy `src` into a target address space (`target_cr3`).
-pub fn post_cross_address_space(_target_cr3: u64, _src: &[u8]) -> Result<(), ()> {
-    Err(())
+/// Copy `src` into a kernel bounce buffer when the target matches the running address space.
+///
+/// - `target_cr3 == 0`: always accepted (bring-up “current / kernel” path).
+/// - x86_64: `target_cr3 == read_cr3()` is accepted.
+/// - Any other `target_cr3`: returns [`Err`] until per-process page-table switching is wired.
+pub fn post_cross_address_space(target_cr3: u64, src: &[u8]) -> Result<(), ()> {
+    if src.is_empty() {
+        CROSS_AS_BOUNCE_LEN.store(0, Ordering::Release);
+        return Ok(());
+    }
+    if src.len() > CROSS_AS_BOUNCE_CAP {
+        return Err(());
+    }
+    let ok = if target_cr3 == 0 {
+        true
+    } else if cfg!(test) {
+        // Host `cargo test` must not execute `read_cr3` (invalid outside the bare-metal kernel).
+        false
+    } else {
+        #[cfg(target_arch = "x86_64")]
+        {
+            target_cr3 == crate::arch::x86_64::paging::read_cr3()
+        }
+        #[cfg(not(target_arch = "x86_64"))]
+        {
+            let _ = target_cr3;
+            false
+        }
+    };
+    if !ok {
+        return Err(());
+    }
+    let mut g = CROSS_AS_BOUNCE.lock();
+    g[..src.len()].copy_from_slice(src);
+    CROSS_AS_BOUNCE_LEN.store(src.len() as u32, Ordering::Release);
+    Ok(())
+}
+
+/// Test / diagnostics: last successful [`post_cross_address_space`] payload length.
+#[cfg(test)]
+pub fn cross_as_bounce_len_for_test() -> usize {
+    CROSS_AS_BOUNCE_LEN.load(Ordering::Acquire) as usize
+}
+
+/// Test / diagnostics: snapshot bounce bytes (length from [`cross_as_bounce_len_for_test`]).
+#[cfg(test)]
+pub fn cross_as_bounce_bytes_for_test(out: &mut [u8]) -> usize {
+    let n = cross_as_bounce_len_for_test().min(out.len()).min(CROSS_AS_BOUNCE_CAP);
+    let g = CROSS_AS_BOUNCE.lock();
+    out[..n].copy_from_slice(&g[..n]);
+    n
 }
 
 #[cfg(test)]
@@ -95,5 +150,20 @@ mod tests {
         let mut link = AlpcDuplexLink::new(sp, cp);
         assert!(link.post_from_client(sp, b"x").is_err());
         assert!(link.post_from_server(cp, b"x").is_err());
+    }
+
+    #[test]
+    fn cross_address_space_bounce_zero_cr3() {
+        assert!(post_cross_address_space(0, b"alpc-bounce").is_ok());
+        assert_eq!(cross_as_bounce_len_for_test(), 11);
+        let mut t = [0u8; 16];
+        let n = cross_as_bounce_bytes_for_test(&mut t);
+        assert_eq!(n, 11);
+        assert_eq!(&t[..11], b"alpc-bounce");
+    }
+
+    #[test]
+    fn cross_address_space_rejects_unknown_cr3() {
+        assert!(post_cross_address_space(u64::MAX, b"x").is_err());
     }
 }
