@@ -4,6 +4,10 @@ use crate::arch::x86_64::{gdt, idt, paging};
 use crate::hal::x86_64::serial;
 use crate::hal::{Hal, X86Hal64};
 use crate::handoff::ZirconBootInfo;
+use crate::rtl::log::{
+    log_line_hal, log_u64_hal, log_usize_hal, SUB_BOOT, SUB_KE, SUB_MM, SUB_SESS, SUB_SYSC,
+    SUB_VID,
+};
 use nt10_boot_protocol::FramebufferInfo;
 
 /// Called with `boot == null` for QEMU `-kernel`; UEFI handoff passes physical `ZirconBootInfo *` in `%rdi`.
@@ -14,27 +18,27 @@ use nt10_boot_protocol::FramebufferInfo;
 pub unsafe extern "C" fn kmain_entry(boot: *const ZirconBootInfo) -> ! {
     let hal = X86Hal64;
     serial::init();
-    hal.debug_write(b"nt10-kernel: serial online (COM1)\r\n");
+    log_line_hal(&hal, SUB_BOOT, b"serial online (COM1)");
 
     #[cfg(target_arch = "x86_64")]
     {
         if paging::using_builtin_page_tables() {
             gdt::install();
-            hal.debug_write(b"nt10-kernel: GDT loaded (built-in layout)\r\n");
+            log_line_hal(&hal, SUB_BOOT, b"GDT loaded (built-in layout)");
         } else {
-            hal.debug_write(b"nt10-kernel: keeping firmware GDT (UEFI)\r\n");
+            log_line_hal(&hal, SUB_BOOT, b"keeping firmware GDT (UEFI)");
         }
     }
     #[cfg(not(target_arch = "x86_64"))]
     {
         gdt::install();
-        hal.debug_write(b"nt10-kernel: GDT loaded\r\n");
+        log_line_hal(&hal, SUB_BOOT, b"GDT loaded");
     }
 
     #[cfg(target_arch = "x86_64")]
     {
         crate::arch::x86_64::syscall::enable_extension_stub();
-        hal.debug_write(b"nt10-kernel: EFER.SCE enabled (syscall path prep)\r\n");
+        log_line_hal(&hal, SUB_BOOT, b"EFER.SCE enabled (syscall path prep)");
     }
 
     unsafe {
@@ -45,17 +49,17 @@ pub unsafe extern "C" fn kmain_entry(boot: *const ZirconBootInfo) -> ! {
             crate::arch::x86_64::tlb::tlb_flush_ipi_entry_addr(),
         );
     }
-    hal.debug_write(b"nt10-kernel: IDT loaded (#PF 14, TLB IPI)\r\n");
+    log_line_hal(&hal, SUB_BOOT, b"IDT loaded (#PF 14, TLB IPI)");
 
     unsafe {
         paging::enable_nxe();
     }
-    hal.debug_write(b"nt10-kernel: EFER.NXE enabled\r\n");
+    log_line_hal(&hal, SUB_BOOT, b"EFER.NXE enabled");
 
     unsafe {
         paging::init_low_identity();
     }
-    hal.debug_write(b"nt10-kernel: early identity map (512 MiB, 2 MiB pages)\r\n");
+    log_line_hal(&hal, SUB_MM, b"early identity map (512 MiB, 2 MiB pages)");
     hal.flush_tlb_all();
 
     let mut uefi_desktop_poll_fb: Option<FramebufferInfo> = None;
@@ -66,23 +70,25 @@ pub unsafe extern "C" fn kmain_entry(boot: *const ZirconBootInfo) -> ! {
         let info = &*boot;
         match crate::mm::boot_mem::validate_boot_info(info) {
             Ok(()) => {
-                hal.debug_write(b"nt10-kernel: ZirconBootInfo extended checks OK\r\n");
-                log_usize_hal(&hal, b"nt10-kernel: mem_map_count=", info.mem_map_count);
+                log_line_hal(&hal, SUB_BOOT, b"ZirconBootInfo extended checks OK");
+                log_usize_hal(&hal, SUB_MM, b"mem_map_count=", info.mem_map_count);
                 let conv = unsafe { crate::mm::early_map::conventional_page_count(info) };
-                log_u64_hal(&hal, b"nt10-kernel: conventional_pages=", conv);
+                log_u64_hal(&hal, SUB_MM, b"conventional_pages=", conv);
                 let usable =
                     unsafe { crate::mm::boot_mem::total_usable_pages(info) };
                 log_u64_hal(
                     &hal,
-                    b"nt10-kernel: usable_conventional_pages_minus_kernel=",
+                    SUB_MM,
+                    b"usable_conventional_pages_minus_kernel=",
                     usable,
                 );
                 let rsv = unsafe { crate::mm::early_map::reserved_firmware_page_count(info) };
-                log_u64_hal(&hal, b"nt10-kernel: acpi_runtime_pages=", rsv);
+                log_u64_hal(&hal, SUB_MM, b"acpi_runtime_pages=", rsv);
                 if info.smbios_anchor_phys != 0 {
                     log_u64_hal(
                         &hal,
-                        b"nt10-kernel: smbios_anchor_phys=",
+                        SUB_MM,
+                        b"smbios_anchor_phys=",
                         info.smbios_anchor_phys,
                     );
                 }
@@ -93,36 +99,42 @@ pub unsafe extern "C" fn kmain_entry(boot: *const ZirconBootInfo) -> ! {
                 let nr = unsafe {
                     crate::mm::boot_mem::usable_conventional_ranges(info, &mut ranges)
                 };
-                log_usize_hal(&hal, b"nt10-kernel: usable_range_slots=", nr);
+                log_usize_hal(&hal, SUB_MM, b"usable_range_slots=", nr);
                 if nr > 0 {
-                    log_u64_hal(&hal, b"nt10-kernel: usable[0].base=", ranges[0].base);
-                    log_u64_hal(&hal, b"nt10-kernel: usable[0].pages=", ranges[0].page_count);
+                    log_u64_hal(&hal, SUB_MM, b"usable[0].base=", ranges[0].base);
+                    log_u64_hal(&hal, SUB_MM, b"usable[0].pages=", ranges[0].page_count);
                 }
                 unsafe {
                     crate::mm::phys::pfn_bringup_init(info);
                 }
                 if unsafe { crate::mm::heap::kernel_heap_bringup_reserve_pages(1) } {
-                    hal.debug_write(b"nt10-kernel: PFN bump + 1-page kernel heap arena OK\r\n");
+                    log_line_hal(&hal, SUB_MM, b"PFN bump + 1-page kernel heap arena OK");
                 } else {
-                    hal.debug_write(b"nt10-kernel: kernel heap arena init skipped (no PFN / non-contiguous)\r\n");
+                    log_line_hal(
+                        &hal,
+                        SUB_MM,
+                        b"kernel heap arena init skipped (no PFN / non-contiguous)",
+                    );
                 }
                 let probe = crate::mm::heap::kernel_bump_alloc(16, 64);
                 if !probe.is_null() {
-                    hal.debug_write(b"nt10-kernel: kernel_bump_alloc probe OK\r\n");
+                    log_line_hal(&hal, SUB_MM, b"kernel_bump_alloc probe OK");
                 }
                 match crate::drivers::video::display_mgr::parse_framebuffer_handoff(&info.framebuffer) {
                     Ok(fb) => {
-                        hal.debug_write(b"nt10-kernel: GOP framebuffer handoff OK\r\n");
-                        log_u64_hal(&hal, b"nt10-kernel: fb_base_phys=", fb.base_phys);
-                        log_usize_hal(&hal, b"nt10-kernel: fb_byte_len=", fb.byte_len);
+                        log_line_hal(&hal, SUB_VID, b"GOP framebuffer handoff OK");
+                        log_u64_hal(&hal, SUB_VID, b"fb_base_phys=", fb.base_phys);
+                        log_usize_hal(&hal, SUB_VID, b"fb_byte_len=", fb.byte_len);
                         log_usize_hal(
                             &hal,
-                            b"nt10-kernel: fb_width_px=",
+                            SUB_VID,
+                            b"fb_width_px=",
                             fb.width_px as usize,
                         );
                         log_usize_hal(
                             &hal,
-                            b"nt10-kernel: fb_height_px=",
+                            SUB_VID,
+                            b"fb_height_px=",
                             fb.height_px as usize,
                         );
                         // Previously we only validated GOP; the panel stayed black. Paint wallpaper + taskbar.
@@ -132,35 +144,35 @@ pub unsafe extern "C" fn kmain_entry(boot: *const ZirconBootInfo) -> ! {
                         );
                         if unsafe { crate::mm::high_half::try_map_uefi_framebuffer_wc(info) }.is_ok()
                         {
-                            hal.debug_write(b"nt10-kernel: framebuffer WC vmap at high VA OK\r\n");
+                            log_line_hal(&hal, SUB_VID, b"framebuffer WC vmap at high VA OK");
                         }
-                        hal.debug_write(b"nt10-kernel: desktop shell painted (UEFI bring-up)\r\n");
+                        log_line_hal(&hal, SUB_SESS, b"desktop shell painted (UEFI bring-up)");
                         uefi_desktop_poll_fb = Some(info.framebuffer);
                     }
                     Err(
                         crate::drivers::video::display_mgr::FramebufferHandoffError::NullBase,
                     ) => {
-                        hal.debug_write(b"nt10-kernel: GOP handoff rejected (null base)\r\n");
+                        log_line_hal(&hal, SUB_VID, b"GOP handoff rejected (null base)");
                     }
                     Err(
                         crate::drivers::video::display_mgr::FramebufferHandoffError::ZeroSize,
                     ) => {
-                        hal.debug_write(b"nt10-kernel: GOP handoff rejected (zero size)\r\n");
+                        log_line_hal(&hal, SUB_VID, b"GOP handoff rejected (zero size)");
                     }
                     Err(
                         crate::drivers::video::display_mgr::FramebufferHandoffError::ZeroWidth,
                     ) => {
-                        hal.debug_write(b"nt10-kernel: GOP handoff rejected (zero width)\r\n");
+                        log_line_hal(&hal, SUB_VID, b"GOP handoff rejected (zero width)");
                     }
                     Err(
                         crate::drivers::video::display_mgr::FramebufferHandoffError::ZeroHeight,
                     ) => {
-                        hal.debug_write(b"nt10-kernel: GOP handoff rejected (zero height)\r\n");
+                        log_line_hal(&hal, SUB_VID, b"GOP handoff rejected (zero height)");
                     }
                     Err(
                         crate::drivers::video::display_mgr::FramebufferHandoffError::StrideTooSmall,
                     ) => {
-                        hal.debug_write(b"nt10-kernel: GOP handoff rejected (stride)\r\n");
+                        log_line_hal(&hal, SUB_VID, b"GOP handoff rejected (stride)");
                     }
                 }
                 #[cfg(target_arch = "x86_64")]
@@ -170,25 +182,27 @@ pub unsafe extern "C" fn kmain_entry(boot: *const ZirconBootInfo) -> ! {
                     }
                     .is_ok()
                     {
-                        hal.debug_write(
-                            b"nt10-kernel: PML4[256] high-half 512MiB mirror + CR3 switch OK\r\n",
+                        log_line_hal(
+                            &hal,
+                            SUB_MM,
+                            b"PML4[256] high-half 512MiB mirror + CR3 switch OK",
                         );
                         uefi_high_half_ok = true;
                     }
                 }
             }
             Err(crate::mm::boot_mem::BootInfoError::MagicOrVersion) => {
-                hal.debug_write(b"nt10-kernel: handoff magic/version invalid\r\n");
+                log_line_hal(&hal, SUB_BOOT, b"handoff magic/version invalid");
             }
             Err(crate::mm::boot_mem::BootInfoError::NullMemoryMap) => {
-                hal.debug_write(b"nt10-kernel: handoff mem_map null with count>0\r\n");
+                log_line_hal(&hal, SUB_BOOT, b"handoff mem_map null with count>0");
             }
             Err(crate::mm::boot_mem::BootInfoError::BadDescriptorSize) => {
-                hal.debug_write(b"nt10-kernel: handoff descriptor size != 40\r\n");
+                log_line_hal(&hal, SUB_BOOT, b"handoff descriptor size != 40");
             }
         }
     } else {
-        hal.debug_write(b"nt10-kernel: no UEFI handoff (null pointer)\r\n");
+        log_line_hal(&hal, SUB_BOOT, b"no UEFI handoff (null pointer)");
     }
 
     crate::subsystems::win32::csrss_host::bringup_kernel_thread_smoke();
@@ -202,8 +216,10 @@ pub unsafe extern "C" fn kmain_entry(boot: *const ZirconBootInfo) -> ! {
         if paging::using_builtin_page_tables() {
             crate::ke::sched::bringup_timer_and_idle(&hal);
         } else {
-            hal.debug_write(
-                b"nt10-kernel: UEFI path - skip HW timer and sti (avoid firmware IRQ clash)\r\n",
+            log_line_hal(
+                &hal,
+                SUB_BOOT,
+                b"UEFI path - skip HW timer and sti (avoid firmware IRQ clash)",
             );
             crate::ke::apc::enqueue_bringup_sample();
         }
@@ -214,7 +230,7 @@ pub unsafe extern "C" fn kmain_entry(boot: *const ZirconBootInfo) -> ! {
     }
 
     crate::ke::apc::deliver_pending_at_passive();
-    hal.debug_write(b"nt10-kernel: KAPC drained at PASSIVE_LEVEL\r\n");
+    log_line_hal(&hal, SUB_KE, b"KAPC drained at PASSIVE_LEVEL");
 
     #[cfg(target_arch = "x86_64")]
     {
@@ -222,7 +238,7 @@ pub unsafe extern "C" fn kmain_entry(boot: *const ZirconBootInfo) -> ! {
             unsafe {
                 crate::arch::x86_64::syscall::install_syscall_msrs_bringup();
             }
-            hal.debug_write(b"nt10-kernel: syscall MSRs STAR/LSTAR/FMASK\r\n");
+            log_line_hal(&hal, SUB_SYSC, b"syscall MSRs STAR/LSTAR/FMASK");
 
             let mut proc = crate::ps::process::EProcess::new_bootstrap();
             let _ = crate::mm::bringup_user::register_bringup_vad(&mut proc.vad_root);
@@ -242,7 +258,7 @@ pub unsafe extern "C" fn kmain_entry(boot: *const ZirconBootInfo) -> ! {
                     crate::mm::user_va::USER_BRINGUP_VA as *mut u8,
                 );
             }
-            hal.debug_write(b"nt10-kernel: entering ring3 syscall smoke\r\n");
+            log_line_hal(&hal, SUB_SYSC, b"entering ring3 syscall smoke");
             let rsp = crate::mm::user_va::USER_BRINGUP_STACK_TOP - 16;
             let rip = crate::mm::bringup_user::user_code_entry_va();
             unsafe {
@@ -251,14 +267,18 @@ pub unsafe extern "C" fn kmain_entry(boot: *const ZirconBootInfo) -> ! {
         } else if uefi_high_half_ok && crate::mm::phys::pfn_pool_initialized() {
             let existing = crate::servers::smss::ring3_placeholder_cr3_phys();
             let new_cr3_opt = if existing != 0 {
-                hal.debug_write(b"nt10-kernel: UEFI ring3 reusing SMSS placeholder CR3\r\n");
+                log_line_hal(&hal, SUB_SYSC, b"UEFI ring3 reusing SMSS placeholder CR3");
                 Some(existing)
             } else if let Some(c) = unsafe { crate::mm::uefi_user_cr3::build_uefi_first_user_cr3() } {
                 let _ = crate::servers::smss::try_set_ring3_placeholder_cr3(c);
-                hal.debug_write(b"nt10-kernel: UEFI first-user CR3 published to SMSS placeholder slot\r\n");
+                log_line_hal(
+                    &hal,
+                    SUB_SYSC,
+                    b"UEFI first-user CR3 published to SMSS placeholder slot",
+                );
                 Some(c)
             } else {
-                hal.debug_write(b"nt10-kernel: UEFI first-user CR3 clone failed\r\n");
+                log_line_hal(&hal, SUB_SYSC, b"UEFI first-user CR3 clone failed");
                 None
             };
             if let Some(new_cr3) = new_cr3_opt {
@@ -268,7 +288,11 @@ pub unsafe extern "C" fn kmain_entry(boot: *const ZirconBootInfo) -> ! {
                 if crate::mm::bringup_user::install_uefi_user_bringup_vads(&mut proc.vad_root).is_ok() {
                     crate::mm::page_fault::set_page_fault_vad_table(core::ptr::addr_of!(proc.vad_root));
                     let code = crate::mm::bringup_user::USER_RING3_UEFI_PROBE_SYSCALL;
-                    hal.debug_write(b"nt10-kernel: UEFI iretq + syscall probe (ZR_UEFI_R3_PROBE)\r\n");
+                    log_line_hal(
+                        &hal,
+                        SUB_SYSC,
+                        b"UEFI iretq + syscall probe (ZR_UEFI_R3_PROBE)",
+                    );
                     let map_ok = unsafe {
                         crate::mm::uefi_user_cr3::map_uefi_bringup_user_code_and_stack(
                             new_cr3,
@@ -284,7 +308,7 @@ pub unsafe extern "C" fn kmain_entry(boot: *const ZirconBootInfo) -> ! {
                         unsafe {
                             crate::arch::x86_64::syscall::install_syscall_msrs_bringup();
                         }
-                        hal.debug_write(b"nt10-kernel: syscall MSRs STAR/LSTAR/FMASK (UEFI)\r\n");
+                        log_line_hal(&hal, SUB_SYSC, b"syscall MSRs STAR/LSTAR/FMASK (UEFI)");
                         let stub = crate::ke::sched::ThreadStub::new(8);
                         let tid = stub.id;
                         let _ = crate::ke::sched::rr_register_thread(stub);
@@ -292,21 +316,25 @@ pub unsafe extern "C" fn kmain_entry(boot: *const ZirconBootInfo) -> ! {
                             crate::ps::thread::EThread::new_system_thread(proc.pid, tid);
                         let _proc_keepalive = &proc;
                         let _ethread_keepalive = &_ethread;
-                        hal.debug_write(b"nt10-kernel: UEFI user thread starting (ring3 + demand stack)\r\n");
+                        log_line_hal(
+                            &hal,
+                            SUB_SYSC,
+                            b"UEFI user thread starting (ring3 + demand stack)",
+                        );
                         let rsp = crate::mm::user_va::USER_BRINGUP_STACK_TOP - 16;
                         let rip = crate::mm::bringup_user::user_code_entry_va();
                         unsafe {
                             crate::arch::x86_64::user_enter::zircon_enter_ring3(rip, rsp);
                         }
                     } else {
-                        hal.debug_write(b"nt10-kernel: UEFI user map failed\r\n");
+                        log_line_hal(&hal, SUB_SYSC, b"UEFI user map failed");
                     }
                 } else {
-                    hal.debug_write(b"nt10-kernel: UEFI user VAD install failed\r\n");
+                    log_line_hal(&hal, SUB_SYSC, b"UEFI user VAD install failed");
                 }
             }
         } else {
-            hal.debug_write(b"nt10-kernel: skip ring3 smoke (not built-in CR3)\r\n");
+            log_line_hal(&hal, SUB_SYSC, b"skip ring3 smoke (not built-in CR3)");
         }
     }
 
@@ -315,53 +343,15 @@ pub unsafe extern "C" fn kmain_entry(boot: *const ZirconBootInfo) -> ! {
         // Poll session draws software cursor + input; runs whenever GOP was handed off. The built-in
         // page-table path jumps to ring3 above and does not return here.
         if let Some(fb) = uefi_desktop_poll_fb {
-            hal.debug_write(b"nt10-kernel: entering UEFI desktop poll session\r\n");
+            log_line_hal(&hal, SUB_SESS, b"entering UEFI desktop poll session");
             crate::desktop::fluent::session::run_uefi_desktop_poll_session(&hal, fb);
         }
     }
 
-    hal.debug_write(b"nt10-kernel: entering idle (hlt)\r\n");
+    log_line_hal(&hal, SUB_BOOT, b"entering idle (hlt)");
     loop {
         unsafe {
             core::arch::asm!("hlt", options(nomem, nostack));
         }
     }
-}
-
-fn log_usize_hal<H: Hal + ?Sized>(hal: &H, prefix: &[u8], n: usize) {
-    hal.debug_write(prefix);
-    let mut buf = [0u8; 24];
-    let mut i = buf.len();
-    let mut v = n;
-    if v == 0 {
-        i -= 1;
-        buf[i] = b'0';
-    } else {
-        while v > 0 && i > 0 {
-            i -= 1;
-            buf[i] = b'0' + (v % 10) as u8;
-            v /= 10;
-        }
-    }
-    hal.debug_write(&buf[i..]);
-    hal.debug_write(b"\r\n");
-}
-
-fn log_u64_hal<H: Hal + ?Sized>(hal: &H, prefix: &[u8], n: u64) {
-    hal.debug_write(prefix);
-    let mut buf = [0u8; 24];
-    let mut i = buf.len();
-    let mut v = n;
-    if v == 0 {
-        i -= 1;
-        buf[i] = b'0';
-    } else {
-        while v > 0 && i > 0 {
-            i -= 1;
-            buf[i] = b'0' + (v % 10) as u8;
-            v /= 10;
-        }
-    }
-    hal.debug_write(&buf[i..]);
-    hal.debug_write(b"\r\n");
 }
