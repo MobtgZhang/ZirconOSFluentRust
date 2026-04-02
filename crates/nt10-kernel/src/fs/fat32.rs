@@ -229,6 +229,162 @@ pub fn fat32_list_root_short_names_chained(
     Ok(written)
 }
 
+/// Locate a root **file** (not subdirectory) with exact 8.3 name `name11` (11 bytes, space-padded).
+#[must_use]
+pub fn fat32_find_root_file_short_name(
+    bpb: &Fat32Bpb,
+    vol: &[u8],
+    name11: &[u8; 11],
+    max_clusters: u32,
+) -> Option<(u32, u32)> {
+    if !bpb.looks_plausible() {
+        return None;
+    }
+    let mut clust = bpb.root_cluster;
+    for _ in 0..max_clusters {
+        let s0 = fat32_cluster_first_sector(bpb, clust)?;
+        let bps = bpb.sector_size() as usize;
+        let spc = bpb.sectors_per_cluster as usize;
+        let mut ended = false;
+        for sec_off in 0..spc {
+            let sec = s0 + sec_off as u32;
+            let sect = fat32_sector_slice(bpb, vol, sec)?;
+            for i in 0..(bps / 32) {
+                let entry = &sect[i * 32..i * 32 + 32];
+                let first = entry[0];
+                if first == 0 {
+                    ended = true;
+                    break;
+                }
+                if first == 0xe5 {
+                    continue;
+                }
+                let attr = entry[11];
+                if attr == ATTR_LONG_NAME || (attr & ATTR_VOLUME_ID) != 0 {
+                    continue;
+                }
+                if (attr & 0x10) != 0 {
+                    continue;
+                }
+                if entry[0..11] != *name11 {
+                    continue;
+                }
+                let cl_hi = u16::from_le_bytes([entry[20], entry[21]]) as u32;
+                let cl_lo = u16::from_le_bytes([entry[26], entry[27]]) as u32;
+                let first_c = (cl_hi << 16) | cl_lo;
+                let size = u32::from_le_bytes([entry[28], entry[29], entry[30], entry[31]]);
+                return Some((first_c, size));
+            }
+            if ended {
+                return None;
+            }
+        }
+        clust = fat32_next_cluster(bpb, vol, clust)?;
+    }
+    None
+}
+
+/// Read up to `file_size` bytes from a FAT32 cluster chain into `out`; returns bytes copied.
+#[must_use]
+pub fn fat32_read_file_chain(
+    bpb: &Fat32Bpb,
+    vol: &[u8],
+    first_clust: u32,
+    file_size: u32,
+    out: &mut [u8],
+) -> Result<usize, ()> {
+    if !bpb.looks_plausible() || first_clust < 2 {
+        return Err(());
+    }
+    let bps = bpb.sector_size() as usize;
+    let spc = bpb.sectors_per_cluster as usize;
+    let cluster_bytes = bps
+        .checked_mul(spc)
+        .ok_or(())?;
+    let want = (file_size as usize).min(out.len());
+    let mut written = 0usize;
+    let mut clust = first_clust;
+    let max_clusters = want
+        .saturating_div(cluster_bytes.max(1))
+        .saturating_add(3);
+    for _ in 0..max_clusters {
+        if written >= want {
+            break;
+        }
+        let s0 = fat32_cluster_first_sector(bpb, clust).ok_or(())?;
+        for sec_off in 0..spc {
+            if written >= want {
+                break;
+            }
+            let sec = s0 + sec_off as u32;
+            let sect = fat32_sector_slice(bpb, vol, sec).ok_or(())?;
+            let take = (want - written).min(sect.len());
+            out[written..written + take].copy_from_slice(&sect[..take]);
+            written += take;
+        }
+        if written >= want {
+            break;
+        }
+        match fat32_next_cluster(bpb, vol, clust) {
+            Some(n) => clust = n,
+            None => break,
+        }
+    }
+    Ok(written)
+}
+
+/// Read from `start` byte offset in the file (for demand paging / partial views).
+#[must_use]
+pub fn fat32_read_file_chain_partial(
+    bpb: &Fat32Bpb,
+    vol: &[u8],
+    first_clust: u32,
+    file_size: u32,
+    start: u64,
+    out: &mut [u8],
+) -> Result<usize, ()> {
+    if !bpb.looks_plausible() || first_clust < 2 {
+        return Err(());
+    }
+    if start >= file_size as u64 || out.is_empty() {
+        return Ok(0);
+    }
+    let max_read = ((file_size as u64) - start) as usize;
+    let want = out.len().min(max_read);
+    let bps = bpb.sector_size() as usize;
+    let spc = bpb.sectors_per_cluster as usize;
+    let mut to_skip = start as usize;
+    let mut written = 0usize;
+    let mut clust = first_clust;
+    let max_clusters = file_size
+        .saturating_div((bps * spc).max(1) as u32)
+        .saturating_add(4) as usize;
+    'outer: for _ in 0..max_clusters {
+        let s0 = fat32_cluster_first_sector(bpb, clust).ok_or(())?;
+        for sec_off in 0..spc {
+            let sec = s0 + sec_off as u32;
+            let sect = fat32_sector_slice(bpb, vol, sec).ok_or(())?;
+            if to_skip >= sect.len() {
+                to_skip -= sect.len();
+                continue;
+            }
+            let slice = &sect[to_skip..];
+            to_skip = 0;
+            let take = (want - written).min(slice.len());
+            out[written..written + take].copy_from_slice(&slice[..take]);
+            written += take;
+            if written >= want {
+                break 'outer;
+            }
+        }
+        match fat32_next_cluster(bpb, vol, clust) {
+            Some(n) => clust = n,
+            None => break,
+        }
+    }
+    Ok(written)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -259,6 +415,46 @@ mod tests {
         let (vol, bpb) = tiny_vol_with_one_root_entry();
         let n = fat32_count_root_short_names_first_cluster(&bpb, &vol).unwrap();
         assert_eq!(n, 1);
+    }
+
+    #[test]
+    fn read_root_short_file_by_cluster_chain() {
+        let mut vol = [0u8; 8192];
+        let mut bpb: Fat32Bpb = unsafe { core::mem::zeroed() };
+        bpb.bytes_per_sector = 512;
+        bpb.sectors_per_cluster = 1;
+        bpb.reserved_sector_count = 1;
+        bpb.num_fats = 1;
+        bpb.fat_size_32 = 1;
+        bpb.root_cluster = 2;
+        let data_sec = fat32_first_data_sector(&bpb);
+        unsafe {
+            (vol.as_mut_ptr() as *mut Fat32Bpb).write(bpb);
+        }
+        let fat_off = 512usize;
+        // cluster 2 = root dir EOC, cluster 3 = file data EOC
+        vol[fat_off + 2 * 4..fat_off + 2 * 4 + 4].copy_from_slice(&0x0FFF_FFFFu32.to_le_bytes());
+        vol[fat_off + 3 * 4..fat_off + 3 * 4 + 4].copy_from_slice(&0x0FFF_FFFFu32.to_le_bytes());
+        let r2 = (data_sec as usize) * 512;
+        let mut ent = [0u8; 32];
+        ent[0..11].copy_from_slice(b"HELLO   TXT");
+        ent[11] = 0x20;
+        ent[26..28].copy_from_slice(&3u16.to_le_bytes());
+        let payload = b"HELLO";
+        ent[28..32].copy_from_slice(&(payload.len() as u32).to_le_bytes());
+        vol[r2..r2 + 32].copy_from_slice(&ent);
+        let r3 = (data_sec as usize + 1) * 512;
+        vol[r3..r3 + payload.len()].copy_from_slice(payload);
+        let bpb_read: Fat32Bpb = unsafe { *(vol.as_ptr() as *const Fat32Bpb) };
+        let mut buf = [0u8; 16];
+        let hello_name = *b"HELLO   TXT";
+        let (fc, sz) =
+            fat32_find_root_file_short_name(&bpb_read, &vol, &hello_name, 8).expect("find");
+        assert_eq!(fc, 3);
+        assert_eq!(sz, 5);
+        let n = fat32_read_file_chain(&bpb_read, &vol, fc, sz, &mut buf).expect("read");
+        assert_eq!(n, 5);
+        assert_eq!(&buf[..5], b"HELLO");
     }
 
     #[test]

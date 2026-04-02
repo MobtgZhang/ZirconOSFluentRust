@@ -36,6 +36,12 @@ impl VfsMountPoint {
             block_volume: Some(BlockVolumeBringup::from_static_slice(data)),
         }
     }
+
+    /// VirtIO-blk (or any linear disk image) staged in RAM — same as [`Self::with_ramdisk`], path name for VFS/PE bring-up.
+    #[must_use]
+    pub fn with_virtio_blk_linear_image(id: u32, whole_disk_image: &'static [u8]) -> Self {
+        Self::with_ramdisk(id, whole_disk_image)
+    }
 }
 
 pub struct VfsTable {
@@ -231,6 +237,51 @@ pub fn fill_desktop_file_list(rows: &mut [[u8; 80]; 32], lens: &mut [usize; 32],
     }
 }
 
+/// Read a root-directory file by exact FAT 8.3 name (11 bytes, e.g. `b"HELLO   TXT"`).
+#[must_use]
+pub fn vfs_read_fat32_root_file_short(
+    vfs: &VfsTable,
+    slot: usize,
+    name11: &[u8; 11],
+    dest: &mut [u8],
+) -> Result<usize, ()> {
+    let mp = vfs.get(slot).ok_or(())?;
+    let bv = mp.block_volume.as_ref().ok_or(())?;
+    let vol = unsafe { bv.disk.as_slice() };
+    if vol.len() < core::mem::size_of::<Fat32Bpb>() {
+        return Err(());
+    }
+    let bpb: Fat32Bpb = unsafe { vol.as_ptr().cast::<Fat32Bpb>().read_unaligned() };
+    if !bpb.looks_plausible() {
+        return Err(());
+    }
+    let (fc, sz) = fat32::fat32_find_root_file_short_name(&bpb, vol, name11, 64).ok_or(())?;
+    fat32::fat32_read_file_chain(&bpb, vol, fc, sz, dest)
+}
+
+/// Read a slice from a root short-name file starting at `start` byte offset.
+#[must_use]
+pub fn vfs_read_fat32_root_file_partial(
+    vfs: &VfsTable,
+    slot: usize,
+    name11: &[u8; 11],
+    start: u64,
+    dest: &mut [u8],
+) -> Result<usize, ()> {
+    let mp = vfs.get(slot).ok_or(())?;
+    let bv = mp.block_volume.as_ref().ok_or(())?;
+    let vol = unsafe { bv.disk.as_slice() };
+    if vol.len() < core::mem::size_of::<Fat32Bpb>() {
+        return Err(());
+    }
+    let bpb: Fat32Bpb = unsafe { vol.as_ptr().cast::<Fat32Bpb>().read_unaligned() };
+    if !bpb.looks_plausible() {
+        return Err(());
+    }
+    let (fc, sz) = fat32::fat32_find_root_file_short_name(&bpb, vol, name11, 64).ok_or(())?;
+    fat32::fat32_read_file_chain_partial(&bpb, vol, fc, sz, start, dest)
+}
+
 impl OpenFileHandle {
     #[must_use]
     pub fn open_mount(vfs: &VfsTable, slot: usize) -> Result<Self, ()> {
@@ -277,6 +328,45 @@ mod tests {
     use super::*;
     use crate::io::irp::Irp;
     use core::ptr::NonNull;
+
+    extern crate alloc;
+
+    #[test]
+    fn vfs_fat32_read_root_short_file() {
+        let mut vol = [0u8; 8192];
+        let mut bpb: fat32::Fat32Bpb = unsafe { core::mem::zeroed() };
+        bpb.bytes_per_sector = 512;
+        bpb.sectors_per_cluster = 1;
+        bpb.reserved_sector_count = 1;
+        bpb.num_fats = 1;
+        bpb.fat_size_32 = 1;
+        bpb.root_cluster = 2;
+        let data_sec = fat32::fat32_first_data_sector(&bpb);
+        unsafe {
+            (vol.as_mut_ptr() as *mut fat32::Fat32Bpb).write(bpb);
+        }
+        let fat_off = 512usize;
+        vol[fat_off + 2 * 4..fat_off + 2 * 4 + 4].copy_from_slice(&0x0FFF_FFFFu32.to_le_bytes());
+        vol[fat_off + 3 * 4..fat_off + 3 * 4 + 4].copy_from_slice(&0x0FFF_FFFFu32.to_le_bytes());
+        let r2 = (data_sec as usize) * 512;
+        let mut ent = [0u8; 32];
+        ent[0..11].copy_from_slice(b"HELLO   TXT");
+        ent[11] = 0x20;
+        ent[26..28].copy_from_slice(&3u16.to_le_bytes());
+        ent[28..32].copy_from_slice(&5u32.to_le_bytes());
+        vol[r2..r2 + 32].copy_from_slice(&ent);
+        let r3 = (data_sec as usize + 1) * 512;
+        vol[r3..r3 + 5].copy_from_slice(b"HELLO");
+        let leaked: &'static [u8] = alloc::boxed::Box::leak(alloc::boxed::Box::new(vol)).as_slice();
+        let mut vfs = VfsTable::new();
+        vfs.mount(0, VfsMountPoint::with_ramdisk(0, leaked))
+            .unwrap();
+        let mut buf = [0u8; 8];
+        let hello = *b"HELLO   TXT";
+        let n = vfs_read_fat32_root_file_short(&vfs, 0, &hello, &mut buf).expect("read");
+        assert_eq!(n, 5);
+        assert_eq!(&buf[..5], b"HELLO");
+    }
 
     #[test]
     fn vfs_ramdisk_read_irp() {
