@@ -18,6 +18,11 @@ pub const IMAGE_NT_OPTIONAL_HDR32_MAGIC: u16 = 0x10B;
 /// `IMAGE_DLLCHARACTERISTICS_NX_COMPAT` — optional header DllCharacteristics bit (PE/COFF).
 pub const IMAGE_DLLCHARACTERISTICS_NX_COMPAT: u16 = 0x0100;
 
+/// `IMAGE_SCN_MEM_EXECUTE` — section `Characteristics` (COFF); absence implies data → NX in PTEs.
+pub const IMAGE_SCN_MEM_EXECUTE: u32 = 0x2000_0000;
+/// `IMAGE_SCN_MEM_WRITE` — section writable in the loaded image.
+pub const IMAGE_SCN_MEM_WRITE: u32 = 0x8000_0000;
+
 /// `IMAGE_SUBSYSTEM_WINDOWS_GUI` — PE optional header `Subsystem` (graphical).
 pub const IMAGE_SUBSYSTEM_WINDOWS_GUI: u16 = 2;
 /// `IMAGE_SUBSYSTEM_WINDOWS_CUI` — console subsystem.

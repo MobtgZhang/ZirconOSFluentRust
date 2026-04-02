@@ -165,6 +165,37 @@ pub fn parse_pe64_headers(image: &[u8]) -> Result<Pe64Headers, PeValidateError> 
     })
 }
 
+/// Byte offset of the first COFF [`IMAGE_SECTION_HEADER`] and how many follow (PE32+ AMD64).
+#[must_use]
+pub fn coff_section_table(image: &[u8]) -> Result<(usize, u16), PeValidateError> {
+    if image.len() < 0x200 {
+        return Err(PeValidateError::BufferTooSmall);
+    }
+    if u16_le(image, 0).ok_or(PeValidateError::BufferTooSmall)? != IMAGE_DOS_SIGNATURE {
+        return Err(PeValidateError::BadDosSignature);
+    }
+    let pe_off = u32_le(image, 0x3C).ok_or(PeValidateError::BufferTooSmall)? as usize;
+    if pe_off + 24 > image.len() {
+        return Err(PeValidateError::BufferTooSmall);
+    }
+    if u32_le(image, pe_off).ok_or(PeValidateError::BufferTooSmall)? != IMAGE_NT_SIGNATURE {
+        return Err(PeValidateError::BadPeSignature);
+    }
+    let num_sections = u16_le(image, pe_off + 6).ok_or(PeValidateError::BufferTooSmall)?;
+    let size_opt = u16_le(image, pe_off + 20).ok_or(PeValidateError::BufferTooSmall)? as usize;
+    let opt_off = pe_off + 24;
+    let table_off = opt_off
+        .checked_add(size_opt)
+        .ok_or(PeValidateError::OptionalTooLarge)?;
+    let need = table_off
+        .checked_add(num_sections as usize * 40)
+        .ok_or(PeValidateError::OptionalTooLarge)?;
+    if need > image.len() {
+        return Err(PeValidateError::BufferTooSmall);
+    }
+    Ok((table_off, num_sections))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
