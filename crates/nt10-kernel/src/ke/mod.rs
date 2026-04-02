@@ -7,6 +7,7 @@ pub mod event;
 pub mod irq;
 pub mod irql;
 pub mod mutex;
+pub mod msg_wait;
 pub mod sched;
 pub mod semaphore;
 pub mod spinlock;

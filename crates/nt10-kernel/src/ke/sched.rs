@@ -121,6 +121,20 @@ pub fn yield_stub() {
     rr_bringup_two_threads();
 }
 
+/// Advance the bring-up RR cursor and pause briefly so another runnable (or ISR) can run.
+/// Used by [`crate::subsystems::win32::msg_dispatch`] instead of a tight spin on empty queues.
+pub fn yield_message_wait() {
+    let n = RR_LEN.load(Ordering::Acquire);
+    if n > 1 {
+        RR_INDEX.fetch_add(1, Ordering::Relaxed);
+    }
+    core::hint::spin_loop();
+    #[cfg(target_arch = "x86_64")]
+    unsafe {
+        core::arch::asm!("pause", options(nomem, nostack));
+    }
+}
+
 /// x86_64: PIC + PIT + IDT vector 32 + `sti`. Other arches: [`yield_stub`] only.
 pub fn bringup_timer_and_idle<H: Hal + ?Sized>(hal: &H) {
     yield_stub();
