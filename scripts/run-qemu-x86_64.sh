@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 # Run ZBM10 UEFI app under QEMU with OVMF (x86_64).
+# ZBM10 shows a blue GOP tile menu when a framebuffer is available; use usb-mouse/usb-kbd (below)
+# to exercise pointer input. With `-display none` or missing GOP, it falls back to a text ConOut menu.
 # Prerequisites: qemu-system-x86_64, OVMF.fd (monolithic) or OVMF_CODE.fd + OVMF_VARS.fd (split).
 #
 # Override with env: OVMF_CODE, OVMF_VARS, ZBM10_EFI
@@ -10,14 +12,14 @@ usage() {
   cat <<'EOF'
 Usage: run-qemu-x86_64.sh [qemu-system-x86_64 options...]
 
-  Build a temporary ESP (BOOTX64.EFI + EFI/ZirconOS/NT10KRNL.BIN) unless ZBM10_ESP is set, then run QEMU + OVMF (q35).
+  Build a temporary ESP (BOOTX64.EFI + EFI/ZirconOSFluent/NT10KRNL.BIN) unless ZBM10_ESP is set, then run QEMU + OVMF (q35).
 
 Environment:
   OVMF_CODE   Firmware image. Auto-detected if unset.
   OVMF_VARS   Split build only: writable vars flash (OVMF_VARS.fd next to CODE).
   ZBM10_EFI   Path to ZBM10 PE (default: zbm10.efi under debug/ or release/; falls back to `zbm10` if no .efi)
   ZBM10_ESP   If set, use this directory as the FAT ESP root (must contain EFI/BOOT/BOOTX64.EFI).
-              When unset, a temp ESP is built via scripts/pack-esp.sh (kernel at EFI/ZirconOS/NT10KRNL.BIN).
+              When unset, a temp ESP is built via scripts/pack-esp.sh (kernel at EFI/ZirconOSFluent/NT10KRNL.BIN).
   PROFILE     Passed to pack-esp.sh when building temp ESP: `release` or `debug` (default).
   ZBM10_NO_REBOOT  If non-empty, pass QEMU `-no-reboot` so a guest triple fault exits instead of resetting.
 

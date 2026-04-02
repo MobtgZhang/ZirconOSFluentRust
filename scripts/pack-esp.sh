@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Build ZBM10 + flat kernel binary and populate a FAT ESP tree:
 #   EFI/BOOT/BOOTX64.EFI
-#   EFI/ZirconOS/NT10KRNL.BIN
+#   EFI/ZirconOSFluent/NT10KRNL.BIN
 #
 # Usage: pack-esp.sh <esp-root-dir>
 # Requires: cargo, and one of rust-objcopy | llvm-objcopy | objcopy (for .BIN).
@@ -50,10 +50,10 @@ if [[ ! -f "$EFI_SRC" ]]; then
   EFI_SRC="$ROOT/target/x86_64-unknown-uefi/$TGT_SUB/zbm10"
 fi
 
-mkdir -p "$DEST/EFI/BOOT" "$DEST/EFI/ZirconOS"
+mkdir -p "$DEST/EFI/BOOT" "$DEST/EFI/ZirconOSFluent"
 cp -f "$EFI_SRC" "$DEST/EFI/BOOT/BOOTX64.EFI"
 
-"$OBJCOPY" -O binary "$KRNL_ELF" "$DEST/EFI/ZirconOS/NT10KRNL.BIN"
+"$OBJCOPY" -O binary "$KRNL_ELF" "$DEST/EFI/ZirconOSFluent/NT10KRNL.BIN"
 
 # OVMF often fails Bds default boot on QEMU's vvfat HDD ("Unsupported"); Internal Shell runs startup.nsh from the volume root after the countdown.
 cat >"$DEST/startup.nsh" <<'NSH'
