@@ -1,5 +1,10 @@
 //! Taskbar / Start — consumes GOP handoff for early splash (software draw, no Win32k yet).
 //!
+//! **Wallpaper single source (Phase 5):** when [`crate::desktop::fluent::session_win32::Win32ShellState::desktop_ready`]
+//! is true, only the Win32 wallpaper HWND paints [`super::resources::DEFAULT_WALLPAPER_BGRA`]; this module skips
+//! [`paint_wallpaper_only`] in [`redraw_uefi_desktop_skip_wallpaper`]. Without Win32, [`paint_wallpaper_only`]
+//! / the tight base cache remain authoritative.
+//!
 //! Default wallpaper id for the resource pack: [`super::resources::DEFAULT_WALLPAPER_ID`].
 //!
 //! Taskbar layout and notification flyouts mirror the *roles* described in
@@ -1042,6 +1047,34 @@ pub fn redraw_uefi_desktop(
     ui: &HostUiState,
 ) {
     paint_wallpaper_only(fb);
+    paint_desktop_shortcuts(fb, layout);
+    paint_desktop_chrome(fb, layout, st, stack);
+    paint_start_menu_overlay(fb, layout, st.menu_open, st.menu_sel);
+    hosted_apps::paint_window_stack(fb, layout, stack, ui);
+    if st.power_confirm_open {
+        paint_power_confirm(fb, layout);
+    }
+    if st.tb_ctx_open {
+        paint_taskbar_context_menu(fb, st.tb_ctx_x, st.tb_ctx_y, st.tb_ctx_sel);
+    }
+    if st.ctx_open {
+        paint_context_menu(fb, st.ctx_x, st.ctx_y, st.ctx_sel);
+    }
+    if st.flyout != FLYOUT_KIND_NONE {
+        paint_notification_flyout(fb, st.flyout, st.flyout_x, st.flyout_y);
+    }
+    display_mgr::framebuffer_store_fence();
+}
+
+/// Full desktop redraw **without** [`paint_wallpaper_only`] — used when the Win32 wallpaper HWND
+/// composites the resource wallpaper as the bottom Z layer (Phase 5 single-source path).
+pub fn redraw_uefi_desktop_skip_wallpaper(
+    fb: &FramebufferInfo,
+    layout: &TaskbarLayout,
+    st: &DesktopChromeState,
+    stack: &WindowStack,
+    ui: &HostUiState,
+) {
     paint_desktop_shortcuts(fb, layout);
     paint_desktop_chrome(fb, layout, st, stack);
     paint_start_menu_overlay(fb, layout, st.menu_open, st.menu_sel);

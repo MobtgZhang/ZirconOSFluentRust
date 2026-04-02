@@ -25,6 +25,7 @@ pub mod lnk;
 pub mod mica;
 pub mod resources;
 pub mod session;
+mod session_win32;
 pub mod shell;
 pub mod shell_namespace;
 pub mod taskbar;

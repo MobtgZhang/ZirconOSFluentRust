@@ -39,7 +39,10 @@ use super::explorer_view;
 use super::hosted_apps::{self, stack_to_bytes, HostUiState};
 use super::shell::{self, DesktopChromeState};
 use super::taskbar::{TaskbarLayout, TASK_SLOT_COUNT, START_MENU_ROW_COUNT};
+use super::session_win32;
 use super::wall_clock;
+
+use crate::ob::winsta::DesktopObject;
 
 static FIRST_POINTER_MOTION: AtomicBool = AtomicBool::new(false);
 static FIRST_RIGHT_BUTTON: AtomicBool = AtomicBool::new(false);
@@ -135,7 +138,7 @@ pub struct DesktopSession {
     pub cx: u32,
     pub cy: u32,
     dwm: DwmCompositor,
-    layout: TaskbarLayout,
+    pub(crate) layout: TaskbarLayout,
     #[cfg(target_arch = "x86_64")]
     xhci: Option<XhciHidState>,
     /// `xhci_init_hid` is deferred so PS/2 + pointer paint are not blocked by USB MMIO waits.
@@ -144,7 +147,7 @@ pub struct DesktopSession {
     #[cfg(target_arch = "x86_64")]
     poll_tick: u32,
     /// Incremented at the start of every [`DesktopSession::poll`] (all arches).
-    poll_seq: u32,
+    pub(crate) poll_seq: u32,
     /// Last [`poll_seq`] when a context-menu right-click was accepted (debounce).
     last_rclick_poll_seq: u32,
     /// Consecutive reports with right button down (need several before accepting a click — PS/2 noise).
@@ -156,7 +159,7 @@ pub struct DesktopSession {
     menu_sel: usize,
     ptr_left_down: bool,
     ptr_right_down: bool,
-    stack: WindowStack,
+    pub(crate) stack: WindowStack,
     host_ui: HostUiState,
     power_confirm_open: bool,
     /// 0 = desktop context, 1 = Files list context.
@@ -174,10 +177,10 @@ pub struct DesktopSession {
     base_cache_active: bool,
     base_cache_w: u32,
     base_cache_h: u32,
-    clock_time: [u8; 16],
-    clock_date: [u8; 20],
-    clock_time_n: u8,
-    clock_date_n: u8,
+    pub(crate) clock_time: [u8; 16],
+    pub(crate) clock_date: [u8; 20],
+    pub(crate) clock_time_n: u8,
+    pub(crate) clock_date_n: u8,
     last_rtc_second: u8,
     uptime_secs: u32,
     last_uptime_adv_poll: u32,
@@ -188,6 +191,9 @@ pub struct DesktopSession {
     tb_ctx_sel: usize,
     tb_ctx_x: u32,
     tb_ctx_y: u32,
+    /// Win32 desktop object + HWND shell overlay (Phase 4/5 UEFI bring-up).
+    pub win32_desktop: DesktopObject,
+    pub win32: session_win32::Win32ShellState,
 }
 
 impl DesktopSession {
@@ -269,8 +275,11 @@ impl DesktopSession {
             tb_ctx_sel: 0,
             tb_ctx_x: 0,
             tb_ctx_y: 0,
+            win32_desktop: DesktopObject::new(),
+            win32: session_win32::Win32ShellState::default(),
         };
         hal.debug_write(b"nt10-session: redraw + software cursor\r\n");
+        session_win32::init_uefi_win32(&mut s, hal);
         s.update_clock_strings();
         s.refresh_desktop();
         hal.debug_write(b"nt10-session: new_uefi complete\r\n");
@@ -365,6 +374,12 @@ impl DesktopSession {
     }
 
     fn ensure_base_cache(&mut self) {
+        // Win32 wallpaper HWND owns the resource wallpaper; shell must not duplicate it in the
+        // tight base cache (see `refresh_desktop` / `redraw_uefi_desktop_skip_wallpaper`).
+        if self.win32.desktop_ready {
+            self.base_cache_active = false;
+            return;
+        }
         let w = self.fb.horizontal_resolution;
         let h = self.fb.vertical_resolution;
         let Some(need) = shell::desktop_base_layer_byte_len(w, h) else {
@@ -391,9 +406,12 @@ impl DesktopSession {
         }
     }
 
-    fn refresh_desktop(&mut self) {
-        // Full scene repaint: pointer is last layer. Uses cached wallpaper+shortcuts when it fits
-        // [`shell::DESKTOP_BASE_LAYER_CAP_BYTES`] (see plan: perf-backbuffer).
+    pub(crate) fn refresh_desktop(&mut self) {
+        session_win32::pump_uefi_win32(self);
+        // Full scene repaint: pointer is last layer.
+        // - No Win32 desktop: cached wallpaper+shortcuts when it fits [`shell::DESKTOP_BASE_LAYER_CAP_BYTES`].
+        // - Win32 desktop: wallpaper from `resources` is painted only in the bottom HWND; shell draws
+        //   shortcuts + chrome on top, then remaining Win32 layers composite above (Phase 5).
         self.update_clock_strings();
         let w = self.fb.horizontal_resolution;
         let h = self.fb.vertical_resolution;
@@ -405,7 +423,21 @@ impl DesktopSession {
         });
         self.ensure_base_cache();
         let st = self.chrome_state();
-        if self.base_cache_active {
+        let win32 = self.win32.desktop_ready;
+        if win32 {
+            let cap = display_mgr::framebuffer_linear_byte_cap(&self.fb);
+            unsafe {
+                let buf = core::slice::from_raw_parts_mut(self.fb.base as *mut u8, cap);
+                let _ = session_win32::composite_win32_wallpaper_only_to_buffer(self, buf);
+            }
+            shell::redraw_uefi_desktop_skip_wallpaper(
+                &self.fb,
+                &self.layout,
+                &st,
+                &self.stack,
+                &self.host_ui,
+            );
+        } else if self.base_cache_active {
             let need = shell::desktop_base_layer_byte_len(self.base_cache_w, self.base_cache_h)
                 .unwrap_or(0);
             unsafe {
@@ -429,6 +461,12 @@ impl DesktopSession {
                 &self.stack,
                 &self.host_ui,
             );
+        }
+        session_win32::pump_uefi_win32(self);
+        if win32 {
+            session_win32::composite_win32_above_wallpaper_to_gop(self);
+        } else {
+            session_win32::composite_win32_to_gop(self);
         }
         self.pointer_capture_under();
         self.pointer_paint_on_fb();
@@ -477,8 +515,6 @@ impl DesktopSession {
                 }
             }
         }
-        // Composite cursor before USB init can block the rest of this poll (and starve later polls).
-        self.pointer_paint_on_fb();
         self.maybe_bringup_xhci_after_ps2(hal);
         #[cfg(target_arch = "x86_64")]
         if let Some(ref xh) = self.xhci {
@@ -500,7 +536,11 @@ impl DesktopSession {
                 }
             }
         }
-        // Re-composite each tick: some firmware/GPU paths do not show cursor if we only paint once.
+        session_win32::maybe_post_timer(self);
+        session_win32::pump_uefi_win32(self);
+        self.pointer_remove_from_fb();
+        session_win32::composite_win32_to_gop(self);
+        self.pointer_capture_under();
         self.pointer_paint_on_fb();
     }
 
@@ -1031,6 +1071,10 @@ impl DesktopSession {
         let sw = self.fb.horizontal_resolution;
         let sh = self.fb.vertical_resolution;
 
+        if session_win32::handle_left_down(self, hal) {
+            return;
+        }
+
         if self.power_confirm_open {
             self.power_confirm_open = false;
             self.refresh_desktop();
@@ -1268,6 +1312,9 @@ impl DesktopSession {
         if self.menu_open {
             return;
         }
+        if session_win32::handle_right_down(self) {
+            return;
+        }
         if self.ctx_open
             && shell::context_menu_panel_contains(px, py, self.ctx_x, self.ctx_y, sw, sh)
         {
@@ -1383,6 +1430,7 @@ impl DesktopSession {
             self.pointer_remove_from_fb();
             self.cx = nx;
             self.cy = ny;
+            session_win32::handle_pointer_move(self);
             self.pointer_capture_under();
             self.pointer_paint_on_fb();
             let (osx, osy) = shell::pointer_sprite_top_left(ox, oy);
