@@ -1,5 +1,5 @@
 //! Logical ids for the workspace `resources/manifest.json` entries.
-//! Wallpaper and Start menu icons are embedded as BGRA at build time (`nt10-kernel/build.rs`).
+//! Wallpaper and Start menu icons are embedded as BGRA at build time (this crate’s `build.rs`).
 //!
 //! **Workspace layout** (repo root): `resources/manifest.json`, `resources/icon-catalog.json`,
 //! `resources/wallpapers/`, `resources/icons/`. SVG sources follow ZirconOS Fluent; run

@@ -32,6 +32,10 @@ use crate::drivers::input::usb_hid;
 use crate::drivers::input::vkey;
 use crate::drivers::video::display_mgr;
 use crate::hal::Hal;
+use crate::rtl::log::{
+    log_compound_begin_hal, log_endline_hal, log_line_hal, write_u32_dec_hal, write_usize_dec_hal,
+    SUB_INPT, SUB_SESS, SUB_VID,
+};
 
 use super::app_host::{AppId, WindowStack};
 use super::dwm::{DirtyRect, DwmCompositor};
@@ -47,7 +51,7 @@ use crate::ob::winsta::DesktopObject;
 static FIRST_POINTER_MOTION: AtomicBool = AtomicBool::new(false);
 static FIRST_RIGHT_BUTTON: AtomicBool = AtomicBool::new(false);
 
-/// Serial (COM1) lines on pointer move or button change. Set to `false` to silence `nt10-mouse:` logs.
+/// Serial (COM1) lines on pointer move or button change. Set to `false` to silence `[ZFOS][INPT]` logs.
 pub const MOUSE_POINTER_SERIAL_DEBUG: bool = true;
 
 /// Minimum [`DesktopSession::poll_seq`] steps between accepted context-menu right-clicks (noise / chatter).
@@ -96,34 +100,51 @@ static mut DESKTOP_BASE_CACHE: [u8; shell::DESKTOP_BASE_LAYER_CAP_BYTES] =
     [0u8; shell::DESKTOP_BASE_LAYER_CAP_BYTES];
 
 pub fn run_uefi_desktop_poll_session<H: Hal + ?Sized>(hal: &H, fb: FramebufferInfo) -> ! {
-    hal.debug_write(b"nt10-session: entered poll session (before desktop init)\r\n");
+    log_line_hal(hal, SUB_SESS, b"entered poll session (before desktop init)");
     let mut s = DesktopSession::new_uefi(hal, fb);
     let linear_cap = display_mgr::framebuffer_linear_byte_cap(&s.fb);
-    hal.debug_write(b"nt10-pointer: FrameBufferSize=");
-    debug_write_usize_dec(hal, s.fb.size);
+    log_compound_begin_hal(hal, SUB_INPT);
+    hal.debug_write(b"FrameBufferSize=");
+    write_usize_dec_hal(hal, s.fb.size);
     hal.debug_write(b" linear_byte_cap=");
-    debug_write_usize_dec(hal, linear_cap);
+    write_usize_dec_hal(hal, linear_cap);
     hal.debug_write(b" ppsl=");
-    debug_write_u32_dec(hal, s.fb.pixels_per_scan_line);
+    write_u32_dec_hal(hal, s.fb.pixels_per_scan_line);
     hal.debug_write(b" cursor_bgra_len=");
-    debug_write_usize_dec(hal, shell::pointer_cursor_asset_len());
+    write_usize_dec_hal(hal, shell::pointer_cursor_asset_len());
     hal.debug_write(b" expected=");
-    debug_write_usize_dec(hal, (shell::POINTER_CURSOR_SIZE as usize).pow(2) * 4);
-    hal.debug_write(b"\r\n");
+    write_usize_dec_hal(hal, (shell::POINTER_CURSOR_SIZE as usize).pow(2) * 4);
+    log_endline_hal(hal);
     display_mgr::log_uefi_framebuffer_diag(hal, &s.fb);
     display_mgr::uefi_framebuffer_touch_selftest(hal, &s.fb);
-    hal.debug_write(b"nt10-kernel: UEFI desktop session (wallpaper + Start menu + input)\r\n");
-    hal.debug_write(b"nt10-mouse: PS/2 aux drained before USB each poll (i8042)\r\n");
+    log_line_hal(
+        hal,
+        SUB_SESS,
+        b"UEFI desktop session (wallpaper + Start menu + input)",
+    );
+    log_line_hal(
+        hal,
+        SUB_INPT,
+        b"PS/2 aux drained before USB each poll (i8042)",
+    );
     #[cfg(target_arch = "x86_64")]
     {
-        hal.debug_write(b"nt10-mouse: USB xHCI init after poll tick ");
-        debug_write_usize_dec(hal, XHCI_INIT_AFTER_POLLS as usize);
-        hal.debug_write(b" (PS/2-only until then; set env NT10_SKIP_XHCI when building, or tune XHCI_INIT_AFTER_POLLS)\r\n");
+        log_compound_begin_hal(hal, SUB_INPT);
+        hal.debug_write(b"USB xHCI init after poll tick ");
+        write_usize_dec_hal(hal, XHCI_INIT_AFTER_POLLS as usize);
+        hal.debug_write(
+            b" (PS/2-only until then; set env NT10_SKIP_XHCI when building, or tune XHCI_INIT_AFTER_POLLS)",
+        );
+        log_endline_hal(hal);
     }
     #[cfg(not(target_arch = "x86_64"))]
-    hal.debug_write(b"nt10-mouse: USB xHCI path not built for this arch\r\n");
+    log_line_hal(hal, SUB_INPT, b"USB xHCI path not built for this arch");
     if MOUSE_POINTER_SERIAL_DEBUG {
-        hal.debug_write(b"nt10-mouse: serial debug ON (see MOUSE_POINTER_SERIAL_DEBUG in session.rs)\r\n");
+        log_line_hal(
+            hal,
+            SUB_INPT,
+            b"serial debug ON (see MOUSE_POINTER_SERIAL_DEBUG in session.rs)",
+        );
     }
     loop {
         s.poll(hal);
@@ -209,7 +230,7 @@ impl DesktopSession {
     }
 
     pub fn new_uefi<H: Hal + ?Sized>(hal: &H, fb: FramebufferInfo) -> Self {
-        hal.debug_write(b"nt10-session: new_uefi begin\r\n");
+        log_line_hal(hal, SUB_SESS, b"new_uefi begin");
         let w = fb.horizontal_resolution;
         let h = fb.vertical_resolution;
         let mut dwm = DwmCompositor::new();
@@ -217,12 +238,12 @@ impl DesktopSession {
         let layout = TaskbarLayout::for_surface(w, h);
         let cx = w / 2;
         let cy = h / 2;
-        hal.debug_write(b"nt10-session: PS/2 i8042 + mouse streaming\r\n");
+        log_line_hal(hal, SUB_SESS, b"PS/2 i8042 + mouse streaming");
         unsafe {
             i8042::init_ps2_ports_poll();
             ps2::enable_mouse_streaming();
         }
-        hal.debug_write(b"nt10-session: PS/2 setup done; xHCI deferred\r\n");
+        log_line_hal(hal, SUB_SESS, b"PS/2 setup done; xHCI deferred");
         let mut s = Self {
             fb,
             cx,
@@ -278,11 +299,11 @@ impl DesktopSession {
             win32_desktop: DesktopObject::new(),
             win32: session_win32::Win32ShellState::default(),
         };
-        hal.debug_write(b"nt10-session: redraw + software cursor\r\n");
+        log_line_hal(hal, SUB_SESS, b"redraw + software cursor");
         session_win32::init_uefi_win32(&mut s, hal);
         s.update_clock_strings();
         s.refresh_desktop();
-        hal.debug_write(b"nt10-session: new_uefi complete\r\n");
+        log_line_hal(hal, SUB_SESS, b"new_uefi complete");
         s
     }
 
@@ -294,26 +315,34 @@ impl DesktopSession {
         }
         if SKIP_XHCI_INIT {
             self.xhci_probe_attempted = true;
-            hal.debug_write(b"nt10-session: SKIP_XHCI_INIT=true - USB xHCI not started\r\n");
+            log_line_hal(
+                hal,
+                SUB_SESS,
+                b"SKIP_XHCI_INIT=true - USB xHCI not started",
+            );
             return;
         }
         if self.poll_tick <= XHCI_INIT_AFTER_POLLS {
             return;
         }
         self.xhci_probe_attempted = true;
-        hal.debug_write(b"nt10-session: xHCI HID init starting (after PS/2 slice)\r\n");
+        log_line_hal(hal, SUB_SESS, b"xHCI HID init starting (after PS/2 slice)");
         self.xhci = unsafe { xhci::xhci_init_hid().ok() };
         match &self.xhci {
             Some(xh) => {
-                hal.debug_write(b"nt10-kernel: xHCI HID ready\r\n");
+                log_line_hal(hal, SUB_VID, b"xHCI HID ready");
                 if xh.mouse_iface.is_some() {
-                    hal.debug_write(b"nt10-mouse: USB HID pointer iface OK (QEMU tablet uses protocol 0)\r\n");
+                    log_line_hal(
+                        hal,
+                        SUB_INPT,
+                        b"USB HID pointer iface OK (QEMU tablet uses protocol 0)",
+                    );
                 } else {
-                    hal.debug_write(b"nt10-mouse: USB xHCI up but no HID pointer interface\r\n");
+                    log_line_hal(hal, SUB_INPT, b"USB xHCI up but no HID pointer interface");
                 }
             }
             None => {
-                hal.debug_write(b"nt10-kernel: xHCI HID init failed (PS/2 may still work)\r\n");
+                log_line_hal(hal, SUB_VID, b"xHCI HID init failed (PS/2 may still work)");
             }
         }
     }
@@ -1279,7 +1308,7 @@ impl DesktopSession {
             self.menu_open = true;
             self.menu_sel = 0;
             self.refresh_desktop();
-            hal.debug_write(b"nt10-kernel: Start opened (mouse)\r\n");
+            log_line_hal(hal, SUB_SESS, b"Start opened (mouse)");
             return;
         }
 
@@ -1303,7 +1332,7 @@ impl DesktopSession {
 
     fn on_right_down<H: Hal + ?Sized>(&mut self, hal: &H) {
         if !FIRST_RIGHT_BUTTON.swap(true, Ordering::Relaxed) {
-            hal.debug_write(b"nt10-kernel: first right button\r\n");
+            log_line_hal(hal, SUB_INPT, b"first right button");
         }
         let px = self.cx;
         let py = self.cy;
@@ -1390,7 +1419,7 @@ impl DesktopSession {
         let btn_changed = left != prev_l || right != prev_r;
         let moved = nx != self.cx || ny != self.cy;
         if mark_first_motion && !FIRST_POINTER_MOTION.swap(true, Ordering::Relaxed) {
-            hal.debug_write(b"nt10-kernel: first pointer motion\r\n");
+            log_line_hal(hal, SUB_INPT, b"first pointer motion");
         }
         let click = left && !prev_l;
         let prev_stable = self.ptr_right_stable_reports;
@@ -1647,7 +1676,7 @@ fn mouse_serial_debug_line<H: Hal + ?Sized>(
     cy: u32,
     pos_moved: bool,
 ) {
-    hal.debug_write(b"nt10-mouse: ");
+    log_compound_begin_hal(hal, SUB_INPT);
     hal.debug_write(match src {
         MouseSource::Ps2 => b"ps2",
         MouseSource::Usb => b"usb",
@@ -1674,22 +1703,6 @@ fn debug_write_hex_u8<H: Hal + ?Sized>(hal: &H, b: u8) {
 
 fn debug_write_u32_dec<H: Hal + ?Sized>(hal: &H, mut n: u32) {
     let mut buf = [0u8; 12];
-    let mut i = buf.len();
-    if n == 0 {
-        i -= 1;
-        buf[i] = b'0';
-    } else {
-        while n > 0 && i > 0 {
-            i -= 1;
-            buf[i] = b'0' + (n % 10) as u8;
-            n /= 10;
-        }
-    }
-    hal.debug_write(&buf[i..]);
-}
-
-fn debug_write_usize_dec<H: Hal + ?Sized>(hal: &H, mut n: usize) {
-    let mut buf = [0u8; 24];
     let mut i = buf.len();
     if n == 0 {
         i -= 1;

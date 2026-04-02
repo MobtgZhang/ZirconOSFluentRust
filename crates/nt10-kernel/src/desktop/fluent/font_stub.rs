@@ -1,4 +1,4 @@
-//! Text rasterization bring-up — OFL / project fonts are wired in **`nt10-kernel/build.rs`** (e.g. Noto
+//! Text rasterization bring-up — OFL / project fonts are wired in this crate’s **`build.rs`** (e.g. Noto
 //! Sans for UI Latin, Libertinus for desktop captions); this module holds Fluent-facing **API stubs**
 //! until a Ring-3 font stack or in-kernel shaper lands.
 //!

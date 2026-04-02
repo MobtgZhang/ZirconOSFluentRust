@@ -6,6 +6,7 @@
 use core::ptr::NonNull;
 
 use crate::hal::Hal;
+use crate::rtl::log::{log_line_hal, SUB_SUBS};
 use crate::libs::win32_abi::{Hwnd, LParam, LResult, WParam};
 use crate::ob::winsta::{WS_EX_TOOLWINDOW, WIN_EX_NO_HIT_TEST, WIN_EX_SHELL_POPUP};
 use crate::subsystems::win32::compositor::{
@@ -292,7 +293,7 @@ fn wp_clock_popup(hwnd: Hwnd, msg: u32, wp: WParam, lp: LParam) -> LResult {
         return 0;
     };
     if msg == wm::WM_PAINT {
-        // Serial keyword (verify-phase5): nt10-phase5: CLOCK_FLYOUT rtc-refresh
+        // Serial keyword (verify-phase5): [ZFOS][SUBS] CLOCK_FLYOUT rtc-refresh
         if let Some(ps) = begin_paint_bringup(&s.win32_desktop, hwnd) {
             let hdc = ps.hdc;
             let si = hdc as usize;
@@ -562,7 +563,7 @@ pub fn init_uefi_win32<H: Hal + ?Sized>(session: &mut DesktopSession, hal: &H) {
         disarm_uefi_session();
     }
 
-    hal.debug_write(b"nt10-phase4: GOP_COMPOSITE win32 layer init OK\r\n");
+    log_line_hal(hal, SUB_SUBS, b"GOP_COMPOSITE win32 layer init OK");
 }
 
 /// `SetTimer` bring-up: arm periodic `WM_TIMER` for taskbar repaint (syscall / host wiring).
@@ -617,7 +618,7 @@ pub fn handle_left_down<H: Hal + ?Sized>(session: &mut DesktopSession, hal: &H) 
                 0,
             );
             if row == 0 {
-                hal.debug_write(b"nt10-phase5: MENU_CMD Open\r\n");
+                log_line_hal(hal, SUB_SUBS, b"MENU_CMD Open");
             }
             return true;
         }
@@ -656,7 +657,7 @@ pub fn handle_left_down<H: Hal + ?Sized>(session: &mut DesktopSession, hal: &H) 
             let _ = session
                 .win32_desktop
                 .set_window_minimized(session.win32.hwnd_clock, true);
-            hal.debug_write(b"nt10-phase5: CLOCK_POP close\r\n");
+            log_line_hal(hal, SUB_SUBS, b"CLOCK_POP close");
             session.refresh_desktop();
             return true;
         }
@@ -669,7 +670,7 @@ pub fn handle_left_down<H: Hal + ?Sized>(session: &mut DesktopSession, hal: &H) 
                     .win32_desktop
                     .set_window_minimized(session.win32.hwnd_clock, !was_min);
                 if was_min {
-                    hal.debug_write(b"nt10-phase5: CLOCK_POP open\r\n");
+                    log_line_hal(hal, SUB_SUBS, b"CLOCK_POP open");
                     let c = session.layout.clock_display_area();
                     let _ = session.win32_desktop.set_window_placement(
                         session.win32.hwnd_clock,
@@ -679,7 +680,7 @@ pub fn handle_left_down<H: Hal + ?Sized>(session: &mut DesktopSession, hal: &H) 
                         48,
                     );
                 } else {
-                    hal.debug_write(b"nt10-phase5: CLOCK_POP close\r\n");
+                    log_line_hal(hal, SUB_SUBS, b"CLOCK_POP close");
                 }
                 session.win32.clock_open = !session
                     .win32_desktop
@@ -701,10 +702,10 @@ pub fn handle_left_down<H: Hal + ?Sized>(session: &mut DesktopSession, hal: &H) 
                     if let Some(aid) = hosted_apps::task_slot_app(&session.stack, i) {
                         if session.stack.top() == Some(aid) {
                             session.stack.remove(aid);
-                            hal.debug_write(b"nt10-phase5: SW_MINIMIZE slot\r\n");
+                            log_line_hal(hal, SUB_SUBS, b"SW_MINIMIZE slot");
                         } else {
                             session.stack.push_front(aid);
-                            hal.debug_write(b"nt10-phase5: SW_RESTORE slot\r\n");
+                            log_line_hal(hal, SUB_SUBS, b"SW_RESTORE slot");
                         }
                         let _ = invalidate_rect_kernel(
                             &session.win32_desktop,
@@ -725,9 +726,9 @@ pub fn handle_left_down<H: Hal + ?Sized>(session: &mut DesktopSession, hal: &H) 
                             .win32_desktop
                             .set_window_minimized(session.win32.hwnd_test, !min);
                         if !min {
-                            hal.debug_write(b"nt10-phase5: SW_MINIMIZE test\r\n");
+                            log_line_hal(hal, SUB_SUBS, b"SW_MINIMIZE test");
                         } else {
-                            hal.debug_write(b"nt10-phase5: SW_RESTORE test\r\n");
+                            log_line_hal(hal, SUB_SUBS, b"SW_RESTORE test");
                             let _ = session
                                 .win32_desktop
                                 .bring_hwnd_to_top(session.win32.hwnd_test);
@@ -764,7 +765,7 @@ pub fn handle_left_down<H: Hal + ?Sized>(session: &mut DesktopSession, hal: &H) 
                     0,
                     0,
                 );
-                hal.debug_write(b"nt10-phase4: WM_LBUTTONDOWN client\r\n");
+                log_line_hal(hal, SUB_SUBS, b"WM_LBUTTONDOWN client");
                 session.refresh_desktop();
                 return true;
             }
