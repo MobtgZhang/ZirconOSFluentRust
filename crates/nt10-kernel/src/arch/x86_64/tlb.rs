@@ -1,4 +1,8 @@
 //! TLB maintenance — BSP `invlpg` and SMP IPI shootdown when multiple CPUs are marked online.
+//!
+//! **SMP acceptance:** application processors must load the **same IDT** as the BSP (including the gate
+//! for [`TLB_FLUSH_IPI_VECTOR`]) before [`smp_set_online_cpu_count`] reports more than one logical CPU.
+//! Otherwise the flush IPI vector is undefined on APs and shootdown is unreliable.
 
 use core::arch::asm;
 use core::sync::atomic::{AtomicU32, AtomicU64, Ordering};
@@ -151,5 +155,17 @@ pub fn shootdown_range_all_cpus(va_start: u64, va_end: u64) {
         while REMOTE_IPI_ACK.load(Ordering::Acquire) != 0 {
             core::hint::spin_loop();
         }
+    }
+}
+
+#[cfg(all(test, target_arch = "x86_64"))]
+mod shootdown_bringup_tests {
+    use super::*;
+
+    #[test]
+    #[ignore = "invlpg and LAPIC paths are ring-0 only; run under QEMU/kernel harness"]
+    fn shootdown_single_cpu_returns_without_ipi_wait_storm() {
+        smp_set_online_cpu_count(1);
+        shootdown_range_all_cpus(0x1000, 0x2000);
     }
 }

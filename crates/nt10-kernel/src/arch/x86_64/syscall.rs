@@ -6,6 +6,7 @@
 use core::arch::global_asm;
 
 use crate::ke::spinlock::SpinLock;
+use crate::rtl::log::{log_line_serial, SUB_SYSC, PREFIX};
 
 extern "C" {
     fn zircon_syscall_entry();
@@ -47,15 +48,18 @@ extern "C" fn zircon_syscall_from_user(
     a5: u64,
 ) -> i64 {
     if num == ZR_UEFI_R3_PROBE_SYSCALL {
-        crate::hal::x86_64::serial::write_line(b"nt10-kernel: ZR_UEFI_R3_SYSCALL_PROBE_OK\r\n");
+        log_line_serial(SUB_SYSC, b"ZR_UEFI_R3_SYSCALL_PROBE_OK");
         return 0;
     }
     let r = zr_syscall_dispatch(num as u16, a1, a2, a3, a4, a5, 0);
     if r == ZR_STATUS_NOT_IMPLEMENTED {
-        crate::hal::x86_64::serial::write_line(b"nt10-kernel: user syscall smoke\r\n");
-        crate::hal::x86_64::serial::write_bytes(b"nt10-kernel: syscall num ");
+        log_line_serial(SUB_SYSC, b"user syscall smoke");
+        crate::hal::x86_64::serial::write_bytes(PREFIX);
+        crate::hal::x86_64::serial::write_bytes(SUB_SYSC);
+        crate::hal::x86_64::serial::write_byte(b' ');
+        crate::hal::x86_64::serial::write_bytes(b"syscall num ");
         crate::hal::x86_64::serial::write_hex_u64(num);
-        crate::hal::x86_64::serial::write_line(b" return\r\n");
+        crate::hal::x86_64::serial::write_line(b" return");
     }
     r as i64
 }
