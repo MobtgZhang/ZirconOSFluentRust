@@ -1,0 +1,52 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  rust:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-unknown-none,x86_64-unknown-uefi
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: cargo check workspace
+        run: cargo check --workspace
+
+      - name: kcheck (nt10-kernel no_std)
+        run: cargo check -p nt10-kernel --target x86_64-unknown-none
+
+      - name: nt10-kernel unit tests (host)
+        run: cargo test -p nt10-kernel --lib
+
+      - name: nt10-kernel-bin bare-metal build
+        run: cargo build -p nt10-kernel-bin --target x86_64-unknown-none
+
+      - name: nt10-boot-uefi
+        run: cargo build -p nt10-boot-uefi --target x86_64-unknown-uefi
+
+      - name: Phase1 serial keyword source check
+        run: bash scripts/verify-phase1-serial-keywords.sh
+
+      - name: Phase3 serial keyword source check
+        run: bash scripts/verify-phase3-serial-keywords.sh
+
+      - name: Phase4 serial keyword source check
+        run: bash scripts/verify-phase4-serial-keywords.sh
+      - name: Verify Phase5 serial keyword strings (source)
+        run: bash scripts/verify-phase5-serial-keywords.sh
+
+      - name: Verify Phase6 serial keyword strings (source)
+        run: bash scripts/verify-phase6-serial-keywords.sh
