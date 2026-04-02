@@ -1,0 +1,5 @@
+# UEFI 引导使用 `x86_64-unknown-uefi`，不受下列 rustflags 影响。
+# 内核 / nt10-kernel-bin 使用 `x86_64-unknown-none`：必须静态重定位，否则 `kmain_trampoline`
+# 会通过未解析的 GOT 间接调用 `kmain_entry`，在 ZBM10 加载的扁平镜像上触发 #UD（如 RIP≈0xB0000）。
+[target.x86_64-unknown-none]
+rustflags = ["-C", "relocation-model=static"]

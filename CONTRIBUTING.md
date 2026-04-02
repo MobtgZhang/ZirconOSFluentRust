@@ -1,8 +1,12 @@
 # 参与贡献
 
+## Pull request 清单
+
+请使用仓库根目录 [`.github/pull_request_template.md`](.github/pull_request_template.md)：写明**公开规范/文档依据**、已运行的测试，并确认未暗示 Microsoft 背书。
+
 ## 商标与关联性
 
-ZirconOS 与 Microsoft Corporation **无关联**。「Windows」「Windows 10」「Win32」等名称与商标归 Microsoft 所有。本仓库仅用于描述技术对标与兼容目标；对外材料请沿用 [README.md](README.md) 中的免责声明。
+ZirconOSFluent 与 Microsoft Corporation **无关联**。「Windows」「Windows 10」「Win32」等名称与商标归 Microsoft 所有。本仓库仅用于描述技术对标与兼容目标；对外材料请沿用 [README.md](README.md) 中的免责声明。
 
 ## 参考微软公开文档（含 `references/win32`）
 
