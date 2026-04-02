@@ -40,8 +40,12 @@ pub unsafe extern "C" fn kmain_entry(boot: *const ZirconBootInfo) -> ! {
     unsafe {
         idt::init();
         idt::set_interrupt_gate(14, crate::arch::x86_64::isr::page_fault_entry_addr());
+        idt::set_interrupt_gate(
+            usize::from(crate::arch::x86_64::tlb::TLB_FLUSH_IPI_VECTOR),
+            crate::arch::x86_64::tlb::tlb_flush_ipi_entry_addr(),
+        );
     }
-    hal.debug_write(b"nt10-kernel: IDT loaded (#PF vector 14)\r\n");
+    hal.debug_write(b"nt10-kernel: IDT loaded (#PF 14, TLB IPI)\r\n");
 
     unsafe {
         paging::enable_nxe();
@@ -245,13 +249,26 @@ pub unsafe extern "C" fn kmain_entry(boot: *const ZirconBootInfo) -> ! {
                 crate::arch::x86_64::user_enter::zircon_enter_ring3(rip, rsp);
             }
         } else if uefi_high_half_ok && crate::mm::phys::pfn_pool_initialized() {
-            if let Some(new_cr3) = unsafe { crate::mm::uefi_user_cr3::build_uefi_first_user_cr3() } {
+            let existing = crate::servers::smss::ring3_placeholder_cr3_phys();
+            let new_cr3_opt = if existing != 0 {
+                hal.debug_write(b"nt10-kernel: UEFI ring3 reusing SMSS placeholder CR3\r\n");
+                Some(existing)
+            } else if let Some(c) = unsafe { crate::mm::uefi_user_cr3::build_uefi_first_user_cr3() } {
+                let _ = crate::servers::smss::try_set_ring3_placeholder_cr3(c);
+                hal.debug_write(b"nt10-kernel: UEFI first-user CR3 published to SMSS placeholder slot\r\n");
+                Some(c)
+            } else {
+                hal.debug_write(b"nt10-kernel: UEFI first-user CR3 clone failed\r\n");
+                None
+            };
+            if let Some(new_cr3) = new_cr3_opt {
                 let mut proc = crate::ps::process::EProcess::new_bootstrap();
                 proc.cr3_phys = new_cr3;
                 proc.peb = crate::ps::peb::PebRef::bringup_smoke();
                 if crate::mm::bringup_user::install_uefi_user_bringup_vads(&mut proc.vad_root).is_ok() {
                     crate::mm::page_fault::set_page_fault_vad_table(core::ptr::addr_of!(proc.vad_root));
-                    let code = crate::mm::bringup_user::USER_RING3_BRINGUP_CODE;
+                    let code = crate::mm::bringup_user::USER_RING3_UEFI_PROBE_SYSCALL;
+                    hal.debug_write(b"nt10-kernel: UEFI iretq + syscall probe (ZR_UEFI_R3_PROBE)\r\n");
                     let map_ok = unsafe {
                         crate::mm::uefi_user_cr3::map_uefi_bringup_user_code_and_stack(
                             new_cr3,
@@ -271,8 +288,8 @@ pub unsafe extern "C" fn kmain_entry(boot: *const ZirconBootInfo) -> ! {
                         let stub = crate::ke::sched::ThreadStub::new(8);
                         let tid = stub.id;
                         let _ = crate::ke::sched::rr_register_thread(stub);
-            let _ethread =
-                crate::ps::thread::EThread::new_system_thread(proc.pid, tid);
+                        let _ethread =
+                            crate::ps::thread::EThread::new_system_thread(proc.pid, tid);
                         let _proc_keepalive = &proc;
                         let _ethread_keepalive = &_ethread;
                         hal.debug_write(b"nt10-kernel: UEFI user thread starting (ring3 + demand stack)\r\n");
@@ -287,8 +304,6 @@ pub unsafe extern "C" fn kmain_entry(boot: *const ZirconBootInfo) -> ! {
                 } else {
                     hal.debug_write(b"nt10-kernel: UEFI user VAD install failed\r\n");
                 }
-            } else {
-                hal.debug_write(b"nt10-kernel: UEFI first-user CR3 clone failed\r\n");
             }
         } else {
             hal.debug_write(b"nt10-kernel: skip ring3 smoke (not built-in CR3)\r\n");
