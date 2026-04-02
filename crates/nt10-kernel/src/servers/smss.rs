@@ -156,3 +156,33 @@ pub fn smss_stub_run_system_phase(
 pub fn smss_last_phase_tag() -> u8 {
     SMSS_LAST_PHASE.load(Ordering::Relaxed)
 }
+
+/// QEMU / CI: keep [`crate::subsystems::win32::csrss_host`] until a Ring-3 csrss image loads.
+pub const NT10_PHASE6_RING3_CSRSS_FALLBACK_TO_KERNEL_HOST: bool = true;
+
+/// Phase 6 scaffold: load `SystemRoot\\System32\\smss.exe` into a Ring-3 process. Returns [`Err`] until PE + CR3 user path is wired.
+#[must_use]
+pub fn try_launch_ring3_smss_from_vfs() -> Result<ProcessId, ()> {
+    if NT10_PHASE6_RING3_CSRSS_FALLBACK_TO_KERNEL_HOST {
+        return Err(());
+    }
+    let _ = try_load_native_image_stub(SmssPhase::SystemProcess);
+    Err(())
+}
+
+/// smss → csrss hand-off over ALPC (stub; see [`crate::alpc::phase6_csrss`]).
+#[must_use]
+pub fn try_smss_alpc_start_csrss_stub(parent: ProcessId) -> Result<(), ()> {
+    crate::alpc::phase6_csrss::try_alpc_handoff_csrss_spawn_stub(parent, 0)
+}
+
+#[cfg(test)]
+mod phase6_tests {
+    use super::*;
+
+    #[test]
+    fn ring3_smss_and_alpc_stubs_return_err() {
+        assert!(try_launch_ring3_smss_from_vfs().is_err());
+        assert!(try_smss_alpc_start_csrss_stub(ProcessId(1)).is_err());
+    }
+}
