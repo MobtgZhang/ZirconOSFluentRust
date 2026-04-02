@@ -39,7 +39,11 @@ User VAs managed with a **VAD AVL tree**: region type (heap/stack/map/reserve), 
 
 ### 1.5 Modules in this repo
 
-[mm/phys.rs](../../crates/nt10-kernel/src/mm/phys.rs), `vm.rs`, `paging.rs`, `heap.rs`, `large_page.rs`, `numa.rs`, `pagefile.rs`, `section.rs`, `working_set.rs`, …
+[mm/phys.rs](../../crates/nt10-kernel/src/mm/phys.rs), `buddy.rs`, `pfn.rs`, `pt.rs`, `pool.rs`, `vm.rs`, `paging.rs`, `heap.rs`, `large_page.rs`, `numa.rs`, `pagefile.rs`, `section.rs`, `vad.rs`, `working_set.rs`, …
+
+### 1.6 Managed runtime and MM (.NET)
+
+Many Windows applications depend on **.NET**. Those processes use `VirtualAlloc` / `NtAllocateVirtualMemory` with heavy **reserve/commit** patterns; JIT code needs **executable mappings** consistent with **NX / DEP**. The kernel should provide documented **VAD, demand paging, and page protections** (MM-P3/MM-P4) without special-casing “managed” vs native. Policy: [DotNet-UserMode.md](DotNet-UserMode.md).
 
 ## 2. Object manager (OB)
 
@@ -76,5 +80,6 @@ Optional headers (name, creator, quota) may precede this in memory (match real N
 
 ## 3. Related docs
 
+- [DotNet-UserMode.md](DotNet-UserMode.md)
 - [Processes-Security-IO.md](Processes-Security-IO.md)
 - [Loader-Win32k-Desktop.md](Loader-Win32k-Desktop.md)

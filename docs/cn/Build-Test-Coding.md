@@ -26,7 +26,7 @@ cargo test               # 规划：host 可测 crate 或 cfg(test) 策略
 | 根清单 | [Cargo.toml](../../Cargo.toml)：`nt10-kernel`、`nt10-boot-uefi` |
 | 工具链 | [rust-toolchain.toml](../../rust-toolchain.toml)：stable + `x86_64-unknown-none` |
 | 内核库 | [crates/nt10-kernel/](../../crates/nt10-kernel/)：`#![no_std]` rlib，**不**注入链接脚本（避免与可执行 crate 的 `-T` 冲突） |
-| 可引导内核 ELF | [crates/nt10-kernel-bin/](../../crates/nt10-kernel-bin/)：[build.rs](../../crates/nt10-kernel-bin/build.rs) 在 `x86_64-unknown-none` 下传入 [link/x86_64-uefi-load.ld](../../link/x86_64-uefi-load.ld)（物理 `0x100000`）；[link/x86_64.ld](../../link/x86_64.ld) 仅作高半核实验参考 |
+| 可引导内核 ELF | [crates/nt10-kernel-bin/](../../crates/nt10-kernel-bin/)：[build.rs](../../crates/nt10-kernel-bin/build.rs) 在 `x86_64-unknown-none` 下传入 [link/x86_64-uefi-load.ld](../../link/x86_64-uefi-load.ld)（物理 `0x0800_0000` / 128 MiB）；[link/x86_64.ld](../../link/x86_64.ld) 仅作高半核实验参考 |
 | 快捷别名 | [.cargo/config.toml](../../.cargo/config.toml)：`cargo kcheck` → `check -p nt10-kernel --target x86_64-unknown-none` |
 | 引导占位 | [crates/nt10-boot-uefi/](../../crates/nt10-boot-uefi/)：无 `uefi-rs` 依赖 |
 
@@ -45,6 +45,8 @@ cargo kcheck
 | 脚本 | 说明 |
 |------|------|
 | [`scripts/run-qemu-x86_64.sh`](../../scripts/run-qemu-x86_64.sh) | QEMU + OVMF；默认调用 [`scripts/pack-esp.sh`](../../scripts/pack-esp.sh) 生成含 `BOOTX64.EFI` 与 `EFI/ZirconOSFluent/NT10KRNL.BIN` 的 ESP；环境变量 `PROFILE=release` 时临时 ESP 使用 release 产物 |
+| [`scripts/run-qemu-kernel.sh`](../../scripts/run-qemu-kernel.sh) | `qemu-system-x86_64 -kernel` 直跑 ELF；部分主机 QEMU 会报缺少 PVH note，可改用 UEFI 脚本冒烟 |
+| [`scripts/fetch-ofl-fonts.sh`](../../scripts/fetch-ofl-fonts.sh) | 拉取 OFL **Noto Sans** 等到 `third_party/fonts/latin/`（构建 UI 栅格可选但推荐） |
 | [`scripts/pack-esp.sh`](../../scripts/pack-esp.sh) | 构建 `zbm10.efi` 与扁平内核二进制并写入指定目录；`PROFILE=release` 等价于 `cargo --release` |
 | [`xtask/`](../../xtask/) | `cargo run -p xtask -- build|pack-esp|qemu|qemu-kernel` 封装上述脚本与构建（`--release` 会设置 `PROFILE=release`） |
 | [`scripts/generate-resource-icons.py`](../../scripts/generate-resource-icons.py) | 自 `resources/icons/_sources/` 导出多尺寸 PNG（需 `pip install pillow`） |
@@ -54,6 +56,20 @@ ISO 镜像生成仍为后续规划；**xtask** 已提供 `build` / `pack-esp` / 
 **UEFI 临时 ESP 布局**（[`scripts/pack-esp.sh`](../../scripts/pack-esp.sh)）：`EFI/BOOT/BOOTX64.EFI`（ZBM10）、`EFI/ZirconOSFluent/NT10KRNL.BIN`（扁平内核）、根目录 `startup.nsh`（缓解部分 OVMF 在 QEMU `fat:` 盘上默认启动项 `Unsupported`、进入 Shell 后可自动拉起 `BOOTX64.EFI`）。可选 `EFI/ZirconOSFluent/zbm10.cfg`（如 `kernel=MYKRNL.BIN`）。OVMF：合并镜像用 QEMU `-bios`；分体 `*CODE*.fd` 与同目录 `OVMF_VARS.fd` 组成双 pflash（见 [`run-qemu-x86_64.sh`](../../scripts/run-qemu-x86_64.sh)）。
 
 **LoongArch UEFI**：上游 `r-efi` 支持 `loongarch64-unknown-uefi` 时，可在本工作区对 `nt10-boot-uefi` 增加对应 target 与链接脚本（与 x86_64 流程对称）。
+
+### 1.4 字体许可与构建（Phase 14 / 桌面）
+
+- **合规**：UI 与标题栅格使用 **SIL OFL 等开源字体**（如 Noto Sans）；**不要**在仓库中捆绑或子集化 **Segoe UI** 等微软受限字体。许可证副本见 [third_party/fonts/licenses/](../../third_party/fonts/licenses/) 与 [third_party/fonts/README.md](../../third_party/fonts/README.md)。
+- **获取字体**：执行 `./scripts/fetch-ofl-fonts.sh`，或将 `NotoSans-Regular.ttf` 等放入 `third_party/fonts/latin/`（与 `nt10-kernel` `build.rs` 候选路径一致）。
+- **严格模式**：设置 `NT10_KERNEL_REQUIRE_OFL_FONT=1` 时，缺少 TTF 会 **panic**（避免误发无合规字体的构建）。
+- **占位构建**：未放置字体且未设上述变量时，构建使用内置 ASCII 占位栅格（功能降级；发行版仍应带 OFL 字体）。
+
+### 1.5 UEFI 桌面会话与 USB 键鼠
+
+长时间看不到 USB 指针时，常见原因是 xHCI 初始化很晚才执行（见 [`session.rs`](../../crates/nt10-kernel/src/desktop/fluent/session.rs) 中 `XHCI_INIT_AFTER_POLLS`）。可选手段：
+
+- **编译期**在运行 `cargo build` / `cargo check` 前导出任意非空的 **`NT10_SKIP_XHCI`**（例如 `NT10_SKIP_XHCI=1`），`option_env!` 会启用 `SKIP_XHCI_INIT`（仅 PS/2）。
+- 或直接调小源码中的 `XHCI_INIT_AFTER_POLLS`（权衡：过早 init 可能拖住主循环）。
 
 ## 2. 测试策略（母版 §26 — 目标内核）
 

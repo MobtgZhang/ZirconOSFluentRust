@@ -19,6 +19,7 @@
 11. [References-Policy.md](References-Policy.md) — Using `references/win32` and `references/r-efi` legally and safely
 12. [Syscall-ABI-ZirconOS.md](Syscall-ABI-ZirconOS.md) — x86_64 syscall ABI (project-specific)
 13. [Ring3-bringup.md](Ring3-bringup.md) — ring-3 user-mode plan (outline)
+14. [DotNet-UserMode.md](DotNet-UserMode.md) — .NET ecosystem, no in-tree PowerShell, future CLR user-mode policy
 
 **Cross-link convention**: At the top of each article you may add `中文: ../cn/<same filename>`.
 

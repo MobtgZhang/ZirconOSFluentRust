@@ -19,6 +19,7 @@
 11. [References-Policy.md](References-Policy.md) — 如何合规使用 `references/win32` 与 `references/r-efi`
 12. [Syscall-ABI-ZirconOS.md](Syscall-ABI-ZirconOS.md) — x86_64 系统调用 ABI（本项目自有）
 13. [Ring3-bringup.md](Ring3-bringup.md) — Ring-3 用户态演进路线（规划）
+14. [DotNet-UserMode.md](DotNet-UserMode.md) — .NET 生态、无 PowerShell、远期 CLR 用户态策略
 
 **互链约定**：每篇正文顶部可放一行 `English: ../en/<同名文件>`。
 

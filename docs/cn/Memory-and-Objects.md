@@ -39,7 +39,11 @@
 
 ### 1.5 目标模块（本仓库）
 
-[mm/phys.rs](../../crates/nt10-kernel/src/mm/phys.rs)、`vm.rs`、`paging.rs`、`heap.rs`、`large_page.rs`、`numa.rs`、`pagefile.rs`、`section.rs`、`working_set.rs` 等。
+[mm/phys.rs](../../crates/nt10-kernel/src/mm/phys.rs)、`buddy.rs`、`pfn.rs`、`pt.rs`、`pool.rs`、`vm.rs`、`paging.rs`、`heap.rs`、`large_page.rs`、`numa.rs`、`pagefile.rs`、`section.rs`、`vad.rs`、`working_set.rs` 等。
+
+### 1.6 托管运行时与 MM（.NET）
+
+许多 Windows 应用依赖 **.NET**；其进程通过 `VirtualAlloc` / `NtAllocateVirtualMemory` 等产生大量 **保留与提交** 区间，JIT 生成的代码需要 **可执行映射**，且应与 **NX / DEP** 策略一致。内核只需实现符合公开文档语义的 **VAD、按需分页与页表保护**（见 MM-P3/MM-P4 实现路线），无需在内核识别「托管」与「原生」。策略说明见 [DotNet-UserMode.md](DotNet-UserMode.md)。
 
 ## 2. 对象管理器（OB）
 
@@ -76,5 +80,6 @@ pub struct ObjectHeader {
 
 ## 3. 相关文档
 
+- [DotNet-UserMode.md](DotNet-UserMode.md)（.NET 与 MM 策略）
 - [Processes-Security-IO.md](Processes-Security-IO.md)（进程与句柄、安全描述符）
 - [Loader-Win32k-Desktop.md](Loader-Win32k-Desktop.md)（PE 映射与节对象）
