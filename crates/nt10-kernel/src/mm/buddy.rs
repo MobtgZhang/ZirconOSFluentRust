@@ -1,7 +1,10 @@
 //! Physical buddy allocator over conventional RAM (per contiguous run).
 //!
 //! Free blocks are linked through the first 8 bytes of the first page of each block.
-//! Orders are in 4 KiB pages: block size = `2^order` pages.
+//!
+//! **Order semantics:** `order = 0` → one 4 KiB page; `order = 9` → `2^9` pages = 512 pages =
+//! 2 MiB. [`MAX_ORDER`] allows larger blocks (e.g. 1 GiB at order 18) when RAM runs permit.
+//! Pages must be identity-mapped where the allocator reads/writes list links.
 
 use super::pfn::{self, PageState};
 use super::PAGE_SIZE;
@@ -207,5 +210,47 @@ pub fn free_order(base: u64, order: usize) {
     }
     unsafe {
         try_merge_recursive(state, base, order);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn buddy_addr_xor_matches_order_size() {
+        let base = 0x1000u64;
+        for order in 0..=6 {
+            let size = PAGE_SIZE << order;
+            let bud = buddy_addr(base, order);
+            assert_eq!(bud, base ^ size);
+        }
+    }
+
+    #[test]
+    fn max_order_aligns_to_power_of_two_pages() {
+        let base = 0x200_000u64;
+        let o = max_order_for_block(base, 512);
+        assert!(o <= 9);
+        let base2 = 0x1000u64;
+        let o2 = max_order_for_block(base2, 1);
+        assert_eq!(o2, 0);
+    }
+
+    #[test]
+    fn max_order_respects_run_length() {
+        let base = 0x1000u64;
+        let o = max_order_for_block(base, 3);
+        assert!(1u64 << o <= 3);
+    }
+
+    #[test]
+    fn buddy_addr_roundtrip_orders_zero_through_nine() {
+        for order in 0..=9u32 {
+            let size = PAGE_SIZE << order;
+            let base = size;
+            let bud = buddy_addr(base, order as usize);
+            assert_eq!(bud ^ base, size);
+        }
     }
 }

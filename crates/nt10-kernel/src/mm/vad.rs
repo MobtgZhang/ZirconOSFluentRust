@@ -84,6 +84,17 @@ pub struct VadTable {
     root: i16,
 }
 
+fn vad_entries_mergeable(a: &VadEntry, b: &VadEntry) -> bool {
+    a.kind == b.kind
+        && a.protect == b.protect
+        && a.committed == b.committed
+        && match (a.section, b.section) {
+            (None, None) => true,
+            (Some(x), Some(y)) => x.as_ptr() == y.as_ptr(),
+            _ => false,
+        }
+}
+
 impl VadTable {
     pub const fn new() -> Self {
         const E: Node = Node::empty();
@@ -91,6 +102,20 @@ impl VadTable {
             nodes: [E; MAX_NODES],
             root: -1,
         }
+    }
+
+    #[must_use]
+    pub fn range_overlaps_existing(&self, start: u64, end: u64) -> bool {
+        if start >= end {
+            return false;
+        }
+        for n in self.nodes.iter().filter(|n| n.in_use) {
+            let k = &n.key;
+            if start < k.end_va && end > k.start_va {
+                return true;
+            }
+        }
+        false
     }
 
     fn alloc_slot(&mut self) -> Option<i16> {
@@ -196,7 +221,68 @@ impl VadTable {
         if e.start_va >= e.end_va {
             return Err(());
         }
+        if self.range_overlaps_existing(e.start_va, e.end_va) {
+            return Err(());
+        }
         self.root = self.insert_rec(self.root, e)?;
+        Ok(())
+    }
+
+    /// Merge adjacent intervals that share kind, protection, commit state, and optional section.
+    pub fn coalesce_adjacent_compatible(&mut self) -> Result<(), ()> {
+        let mut buf = [VadEntry::new_range(
+            0,
+            1,
+            VadKind::Reserve,
+            PageProtect::NoAccess,
+            false,
+        ); MAX_NODES];
+        let mut n = 0usize;
+        for e in self.iter() {
+            if n >= MAX_NODES {
+                return Err(());
+            }
+            buf[n] = *e;
+            n += 1;
+        }
+        for i in 1..n {
+            let mut j = i;
+            while j > 0 && buf[j - 1].start_va > buf[j].start_va {
+                buf.swap(j - 1, j);
+                j -= 1;
+            }
+        }
+        let mut merged = [VadEntry::new_range(
+            0,
+            1,
+            VadKind::Reserve,
+            PageProtect::NoAccess,
+            false,
+        ); MAX_NODES];
+        let mut m = 0usize;
+        let mut i = 0usize;
+        while i < n {
+            let mut cur = buf[i];
+            i += 1;
+            while i < n {
+                let next = buf[i];
+                if cur.end_va == next.start_va && vad_entries_mergeable(&cur, &next) {
+                    cur.end_va = next.end_va;
+                    i += 1;
+                } else {
+                    break;
+                }
+            }
+            if m >= MAX_NODES {
+                return Err(());
+            }
+            merged[m] = cur;
+            m += 1;
+        }
+        self.reset_tree();
+        for j in 0..m {
+            self.insert(merged[j])?;
+        }
         Ok(())
     }
 
@@ -335,5 +421,57 @@ mod tests {
         assert!(t.find_by_va(0x30_0000).is_some());
         assert!(t.remove(0x10_0000).is_ok());
         assert_eq!(t.len(), 1);
+    }
+
+    #[test]
+    fn vad_insert_rejects_overlap() {
+        let mut t = VadTable::new();
+        assert!(t
+            .insert(VadEntry::new_range(
+                0x10_0000,
+                0x20_0000,
+                VadKind::Private,
+                PageProtect::ReadWrite,
+                true,
+            ))
+            .is_ok());
+        assert!(t
+            .insert(VadEntry::new_range(
+                0x1F_0000,
+                0x30_0000,
+                VadKind::Private,
+                PageProtect::ReadWrite,
+                true,
+            ))
+            .is_err());
+    }
+
+    #[test]
+    fn vad_coalesce_adjacent() {
+        let mut t = VadTable::new();
+        assert!(t
+            .insert(VadEntry::new_range(
+                0x10_0000,
+                0x20_0000,
+                VadKind::Private,
+                PageProtect::ReadWrite,
+                true,
+            ))
+            .is_ok());
+        assert!(t
+            .insert(VadEntry::new_range(
+                0x20_0000,
+                0x30_0000,
+                VadKind::Private,
+                PageProtect::ReadWrite,
+                true,
+            ))
+            .is_ok());
+        assert_eq!(t.len(), 2);
+        assert!(t.coalesce_adjacent_compatible().is_ok());
+        assert_eq!(t.len(), 1);
+        let e = t.find_by_va(0x15_0000).unwrap();
+        assert_eq!(e.start_va, 0x10_0000);
+        assert_eq!(e.end_va, 0x30_0000);
     }
 }

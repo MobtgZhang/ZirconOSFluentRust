@@ -179,6 +179,9 @@ pub unsafe fn query_pte(cr3_phys: u64, va: u64) -> Option<u64> {
 }
 
 /// Build PTE flags for a VAD entry. `map_as_user` should be true for canonical lower-half VAs.
+///
+/// [`super::vad::PageProtect::WriteCopy`] is mapped **read-only** in the PTE until a write fault
+/// promotes the page (see [`crate::mm::page_fault`]).
 #[must_use]
 pub fn page_flags_for_vad_entry(e: &super::vad::VadEntry, map_as_user: bool) -> PageFlags {
     let nx = !matches!(
@@ -187,14 +190,28 @@ pub fn page_flags_for_vad_entry(e: &super::vad::VadEntry, map_as_user: bool) -> 
     );
     let write = matches!(
         e.protect,
-        super::vad::PageProtect::ReadWrite
-            | super::vad::PageProtect::ExecuteReadWrite
-            | super::vad::PageProtect::WriteCopy
+        super::vad::PageProtect::ReadWrite | super::vad::PageProtect::ExecuteReadWrite
     );
     let present = e.kind != super::vad::VadKind::Reserve;
     PageFlags {
         present,
         write,
+        user: map_as_user,
+        nx,
+        write_combining: false,
+    }
+}
+
+/// PTE after handling a write fault on a [`super::vad::PageProtect::WriteCopy`] mapping.
+#[must_use]
+pub fn page_flags_cow_promoted(e: &super::vad::VadEntry, map_as_user: bool) -> PageFlags {
+    let nx = !matches!(
+        e.protect,
+        super::vad::PageProtect::ExecuteRead | super::vad::PageProtect::ExecuteReadWrite
+    );
+    PageFlags {
+        present: true,
+        write: true,
         user: map_as_user,
         nx,
         write_combining: false,
@@ -272,4 +289,38 @@ pub unsafe fn map_framebuffer_wc(
     }
     crate::arch::x86_64::tlb::shootdown_range(virt_base, virt_base + byte_len as u64);
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::mm::vad::{PageProtect, VadEntry, VadKind};
+
+    #[test]
+    fn writecopy_initial_pte_is_readonly() {
+        let e = VadEntry::new_range(
+            0,
+            4096,
+            VadKind::Private,
+            PageProtect::WriteCopy,
+            true,
+        );
+        let f = page_flags_for_vad_entry(&e, true);
+        assert!(f.present);
+        assert!(!f.write);
+    }
+
+    #[test]
+    fn cow_promoted_pte_is_writable() {
+        let e = VadEntry::new_range(
+            0,
+            4096,
+            VadKind::Private,
+            PageProtect::WriteCopy,
+            true,
+        );
+        let f = page_flags_cow_promoted(&e, true);
+        assert!(f.write);
+        assert!(f.present);
+    }
 }

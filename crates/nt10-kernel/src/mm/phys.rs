@@ -1,7 +1,8 @@
 //! Physical frame allocation — buddy allocator + PFN database (see [`super::buddy`], [`super::pfn`]).
 //!
-//! Replaces the bring-up-only bump cursor; all frames are tracked in [`super::pfn`] when they fit
-//! [`super::pfn::MAX_PHYS_PAGES`].
+//! **Note (vs. internal roadmap `ideas/claude/content1.2.md`):** older text may still say “`PfnBump`”;
+//! this module uses the **buddy allocator** plus [`super::pfn`] for bring-up, not a bump-only cursor.
+//! All frames are tracked in [`super::pfn`] when they fit [`super::pfn::MAX_PHYS_PAGES`].
 
 use super::boot_mem::{usable_conventional_ranges, UsablePhysRange};
 use super::buddy;

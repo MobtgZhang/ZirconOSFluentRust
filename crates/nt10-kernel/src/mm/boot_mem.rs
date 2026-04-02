@@ -1,5 +1,9 @@
 //! Boot-time physical memory view from UEFI handoff: validation and usable conventional ranges.
 //!
+//! **GOP framebuffer:** frames are usually **not** `EfiConventionalMemory` (often MMIO or reserved).
+//! If a platform maps the framebuffer into conventional RAM, subtract that range before PFN bring-up
+//! so [`super::phys::pfn_bringup_init`] never allocates those pages.
+//!
 //! Used as input for a future PFN database. Descriptor type values follow the UEFI spec
 //! (see also [`crate::mm::early_map`]); layout is defined in `nt10-boot-protocol`.
 
@@ -196,5 +200,40 @@ mod tests {
     fn validate_default_handoff_ok() {
         let info = ZirconBootInfo::new();
         assert!(validate_boot_info(&info).is_ok());
+    }
+
+    #[test]
+    fn push_less_hole_splits_segment() {
+        let mut out = [UsablePhysRange {
+            base: 0,
+            page_count: 0,
+        }; 4];
+        let mut n = 0usize;
+        push_less_hole(
+            0x1000,
+            16,
+            0x5000,
+            4,
+            &mut out,
+            &mut n,
+        );
+        assert_eq!(n, 2);
+        assert_eq!(out[0].base, 0x1000);
+        assert_eq!(out[0].page_count, 4);
+        assert_eq!(out[1].base, 0x9000);
+        assert_eq!(out[1].page_count, 8);
+    }
+
+    #[test]
+    fn push_less_hole_no_overlap_passthrough() {
+        let mut out = [UsablePhysRange {
+            base: 0,
+            page_count: 0,
+        }; 2];
+        let mut n = 0usize;
+        // Hole far above segment so the whole run is retained.
+        push_less_hole(0x10_0000, 8, 0x1000_0000, 1024, &mut out, &mut n);
+        assert_eq!(n, 1);
+        assert_eq!(out[0].page_count, 8);
     }
 }

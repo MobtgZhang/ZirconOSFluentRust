@@ -2,6 +2,11 @@
 //!
 //! Layout is project-specific (clean-room). Index ↔ physical address via binary search on
 //! [`sorted_phys_slice`].
+//!
+//! **Invariants (bring-up):** only pages listed after `pfn_bringup_init` are handed to the buddy
+//! allocator; [`boot_mem`](crate::mm::boot_mem) must exclude the kernel image reservation so those
+//! frames never appear here. [`PageState`] is updated by the buddy allocator on free/alloc blocks;
+//! `share_count` / `reference_count` are reserved for shared/COW paths.
 
 use super::PAGE_SIZE;
 
@@ -94,5 +99,54 @@ pub fn set_state_for_block(base: u64, pages: u64, state: PageState) {
     for i in 0..pages {
         let p = base.saturating_add(i.saturating_mul(PAGE_SIZE));
         set_state_by_phys(p, state);
+    }
+}
+
+/// PFN reference count for shared / COW bookkeeping (best-effort when `phys` is not managed).
+#[must_use]
+pub fn pfn_reference_count(phys: u64) -> u16 {
+    let Some(i) = phys_to_index(phys) else {
+        return 0;
+    };
+    unsafe {
+        let p = core::ptr::addr_of!(PFN_TABLE).cast::<MmPfnEntry>().add(i);
+        (*p).reference_count
+    }
+}
+
+pub fn pfn_set_reference_count(phys: u64, count: u16) {
+    if let Some(i) = phys_to_index(phys) {
+        unsafe {
+            let p = core::ptr::addr_of_mut!(PFN_TABLE).cast::<MmPfnEntry>().add(i);
+            (*p).reference_count = count;
+        }
+    }
+}
+
+pub fn pfn_reference_inc(phys: u64) {
+    if let Some(i) = phys_to_index(phys) {
+        unsafe {
+            let p = core::ptr::addr_of_mut!(PFN_TABLE).cast::<MmPfnEntry>().add(i);
+            (*p).reference_count = (*p).reference_count.saturating_add(1);
+        }
+    }
+}
+
+pub fn pfn_reference_dec(phys: u64) {
+    if let Some(i) = phys_to_index(phys) {
+        unsafe {
+            let p = core::ptr::addr_of_mut!(PFN_TABLE).cast::<MmPfnEntry>().add(i);
+            (*p).reference_count = (*p).reference_count.saturating_sub(1);
+        }
+    }
+}
+
+#[cfg(test)]
+mod phys_index_tests {
+    #[test]
+    fn binary_search_phys_index_logic() {
+        let sorted = [0x1000u64, 0x2000u64, 0x3000u64];
+        assert_eq!(sorted.binary_search(&0x2000).ok(), Some(1));
+        assert!(sorted.binary_search(&0x1500).is_err());
     }
 }

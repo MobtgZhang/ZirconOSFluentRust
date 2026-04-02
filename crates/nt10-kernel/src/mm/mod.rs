@@ -20,6 +20,7 @@ pub mod pool;
 pub mod pt;
 pub mod section;
 pub mod user_va;
+pub mod uefi_user_cr3;
 pub mod vad;
 pub mod vm;
 pub mod working_set;
