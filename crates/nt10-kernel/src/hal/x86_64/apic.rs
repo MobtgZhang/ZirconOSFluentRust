@@ -105,6 +105,30 @@ pub fn try_init_bsp_timer(vector: u8, initial_count: u32) -> bool {
     }
 }
 
+/// ICR low dword — write after ICR high; write triggers dispatch.
+const REG_ICR_HIGH: u32 = 0x310;
+const REG_ICR_LOW: u32 = 0x300;
+
+/// Destination shorthand "all excluding self" (bits 18–19 of ICR low).
+const ICR_DEST_ALL_EXCL_SELF: u32 = 3 << 18;
+
+/// Fixed-mode IPI to all logical CPUs except the sender (xAPIC MMIO).
+///
+/// # Safety
+/// LAPIC MMIO must be valid; target vector must have a handler on every CPU that may receive it.
+pub unsafe fn send_ipi_all_excluding_self(vector: u8) {
+    let base = cached_mmio_phys();
+    if base == 0 {
+        return;
+    }
+    write_mmio(base, REG_ICR_HIGH, 0);
+    write_mmio(
+        base,
+        REG_ICR_LOW,
+        u32::from(vector & 0xFF) | ICR_DEST_ALL_EXCL_SELF,
+    );
+}
+
 /// Read timer current count (debug).
 #[must_use]
 pub fn debug_timer_current_count() -> u32 {
