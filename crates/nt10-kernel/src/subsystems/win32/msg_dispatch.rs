@@ -3,7 +3,7 @@
 //! Bring-up: fixed thread slots (`tid % N`); real CSRSS would attach queues to ETHREAD.
 
 use core::ptr::NonNull;
-use core::sync::atomic::{AtomicI64, AtomicU32, AtomicUsize, Ordering};
+use core::sync::atomic::{AtomicI64, AtomicU32, AtomicU64, AtomicUsize, Ordering};
 
 use crate::ke::msg_wait::MsgWaitGen;
 use crate::ke::spinlock::SpinLock;
@@ -32,6 +32,7 @@ pub struct PostedMessageKernel {
 
 struct ThreadMsgSlot {
     desktop_ptr: AtomicUsize,
+    teb_user_va: AtomicU64,
     queue: [PostedMessageKernel; QUEUE_CAP],
     head: u8,
     len: u8,
@@ -48,6 +49,7 @@ impl ThreadMsgSlot {
     const fn new() -> Self {
         Self {
             desktop_ptr: AtomicUsize::new(0),
+            teb_user_va: AtomicU64::new(0),
             queue: [PostedMessageKernel {
                 hwnd: 0,
                 msg: 0,
@@ -110,11 +112,23 @@ pub fn current_thread_for_win32() -> u32 {
 
 /// Bind `tid` to a desktop object (kernel address stored as truncated `u32` — bring-up low memory only).
 pub fn thread_bind_desktop(tid: u32, desktop: NonNull<DesktopObject>) {
+    thread_bind_win32(tid, desktop, 0);
+}
+
+/// Desktop + optional user TEB base for Win32 routing (mirrors [`crate::ps::thread::EThread`] fields).
+pub fn thread_bind_win32(tid: u32, desktop: NonNull<DesktopObject>, teb_user_va: u64) {
     let p = desktop.as_ptr() as usize;
-    SLOTS[slot_index(tid)]
-        .lock()
-        .desktop_ptr
-        .store(p, Ordering::Release);
+    let s = SLOTS[slot_index(tid)].lock();
+    s.desktop_ptr.store(p, Ordering::Release);
+    s.teb_user_va.store(teb_user_va, Ordering::Release);
+}
+
+/// Push [`crate::ps::thread::EThread`] Win32 routing into the per-tid slot.
+pub fn apply_ethread_routing(e: &crate::ps::thread::EThread) {
+    let Some(p) = NonNull::new(e.desktop_kernel_ptr as *mut DesktopObject) else {
+        return;
+    };
+    thread_bind_win32(e.tid.0, p, e.teb_user_va);
 }
 
 #[must_use]
@@ -124,6 +138,14 @@ pub fn thread_desktop_ptr(tid: u32) -> Option<NonNull<DesktopObject>> {
         .desktop_ptr
         .load(Ordering::Acquire);
     NonNull::new(v as *mut DesktopObject)
+}
+
+#[must_use]
+pub fn thread_teb_user_va(tid: u32) -> u64 {
+    SLOTS[slot_index(tid)]
+        .lock()
+        .teb_user_va
+        .load(Ordering::Acquire)
 }
 
 /// Last message retrieved by [`get_message_wait_kernel`] / syscall GET_MESSAGE (single-threaded bring-up).
@@ -236,6 +258,9 @@ pub fn post_message_kernel(
 }
 
 /// Pop one posted message for `tid`, or block cooperatively until one arrives.
+///
+/// Blocking uses [`MsgWaitGen::wait_until_changed`] → [`crate::ke::sched::block_cooperative_idle`]
+/// (DPC drain + RR yield + `pause`), not a bare tight spin.
 pub fn get_message_wait_kernel(tid: u32) -> PostedMessageKernel {
     loop {
         process_pending_sends(tid);
@@ -295,11 +320,18 @@ mod tests {
 
     #[test]
     fn post_get_dispatch_wm_user() {
+        use crate::ke::sched::ThreadId;
+        use crate::ps::process::ProcessId;
+        use crate::ps::thread::EThread;
+
         let tid = 7u32;
         set_current_thread_for_win32(tid);
         let mut desktop = DesktopObject::new();
         let dptr = core::ptr::NonNull::from(&mut desktop);
-        thread_bind_desktop(tid, dptr);
+        let ethread = EThread::new_system_thread(ProcessId(1), ThreadId(tid))
+            .with_win32_routing(0x0000_7ffe_0000, dptr.as_ptr() as usize);
+        apply_ethread_routing(&ethread);
+        assert_eq!(thread_teb_user_va(tid), 0x0000_7ffe_0000);
         let atom = register_class_ex_bringup(0, 0x41).expect("class");
         let hwnd = create_window_ex_on_desktop(
             unsafe { dptr.as_ref() },

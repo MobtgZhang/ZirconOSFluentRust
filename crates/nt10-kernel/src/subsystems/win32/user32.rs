@@ -3,6 +3,7 @@
 //! Post vs send: bring-up uses only **posted** messages ([`post_message_zr`]); synchronous
 //! `SendMessage` waits on another thread are not modeled until a real Win32k scheduler exists.
 
+use crate::ke::msg_wait::MsgWaitGen;
 use crate::ke::spinlock::SpinLock;
 use crate::libs::win32_abi::{Hwnd, LParam, LResult, WParam};
 use super::csrss_host;
@@ -72,6 +73,9 @@ impl User32Ring {
 
 static USER32_QUEUE: SpinLock<User32Ring> = SpinLock::new(User32Ring::new());
 
+/// Wakes [`wait_pop_message_zr`] when [`post_message_zr`] uses the legacy ring (no bound desktop).
+static USER32_LEGACY_WAIT: MsgWaitGen = MsgWaitGen::new();
+
 /// Post a message: when the current thread has a bound desktop, routes via
 /// [`msg_dispatch::post_message_kernel`] (same path as Win32 syscalls); otherwise falls back to the
 /// legacy process-wide ring buffer.
@@ -86,12 +90,25 @@ pub fn post_message_zr(m: ZrUser32Message) -> Result<(), ()> {
             m.lparam,
         );
     }
-    USER32_QUEUE.lock().push(m)
+    USER32_QUEUE.lock().push(m)?;
+    USER32_LEGACY_WAIT.wake_one();
+    Ok(())
 }
 
 #[must_use]
 pub fn peek_pop_message_zr() -> Option<ZrUser32Message> {
     USER32_QUEUE.lock().pop()
+}
+
+/// Block cooperatively until the legacy ring has a message (pairs with [`post_message_zr`] when no desktop is bound).
+pub fn wait_pop_message_zr() -> ZrUser32Message {
+    loop {
+        if let Some(m) = peek_pop_message_zr() {
+            return m;
+        }
+        let seen = USER32_LEGACY_WAIT.current();
+        USER32_LEGACY_WAIT.wait_until_changed(seen);
+    }
 }
 
 #[derive(Clone, Copy, Debug, Default)]
@@ -153,4 +170,25 @@ pub fn translate_accelerator_stub(_hwnd: Hwnd, _table: u64, _msg: &mut ZrUser32M
 #[inline]
 pub fn dispatch_default_bringup(hwnd: Hwnd, msg: u32, wp: WParam, lp: LParam) -> LResult {
     def_window_proc_bringup(hwnd, msg, wp, lp)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn legacy_post_wakes_wait_pop() {
+        msg_dispatch::set_current_thread_for_win32(0xFE);
+        post_message_zr(ZrUser32Message {
+            hwnd: 1,
+            msg: 0x55,
+            wparam: 3,
+            lparam: 4,
+        })
+        .expect("post");
+        let m = wait_pop_message_zr();
+        assert_eq!(m.msg, 0x55);
+        assert_eq!(m.wparam, 3);
+        assert_eq!(m.lparam, 4);
+    }
 }
