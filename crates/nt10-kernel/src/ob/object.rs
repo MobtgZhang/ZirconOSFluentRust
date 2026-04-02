@@ -77,20 +77,20 @@ pub fn ob_descriptor_for_type(ty: ObjectTypeIndex) -> ObTypeDescriptor {
     if ty == ObjectTypeIndex::TEST_STUB {
         return ObTypeDescriptor {
             delete_procedure: Some(test_support::test_stub_delete_static),
-            close_procedure: None,
-            ok_to_close_procedure: None,
+            close_procedure: Some(test_support::test_stub_close_static),
+            ok_to_close_procedure: Some(test_support::test_stub_ok_to_close),
         };
     }
     match ty {
         ObjectTypeIndex::WINDOW_STATION => ObTypeDescriptor {
             delete_procedure: Some(crate::ob::winsta::delete_window_station_static),
-            close_procedure: None,
-            ok_to_close_procedure: None,
+            close_procedure: Some(crate::ob::winsta::close_window_station_static),
+            ok_to_close_procedure: Some(crate::ob::winsta::ok_to_close_window_station_static),
         },
         ObjectTypeIndex::DESKTOP => ObTypeDescriptor {
             delete_procedure: Some(crate::ob::winsta::delete_desktop_static),
-            close_procedure: None,
-            ok_to_close_procedure: None,
+            close_procedure: Some(crate::ob::winsta::close_desktop_static),
+            ok_to_close_procedure: Some(crate::ob::winsta::ok_to_close_desktop_static),
         },
         _ => OB_TYPE_EMPTY,
     }
@@ -126,6 +126,9 @@ pub unsafe fn ob_on_last_handle_released(ptr: core::ptr::NonNull<()>) {
     h.handle_count = h.handle_count.saturating_sub(1);
     if h.handle_count == 0 {
         let desc = ob_descriptor_for_type(h.type_index);
+        if let Some(close) = desc.close_procedure {
+            unsafe { close(ptr.as_ptr()) };
+        }
         if let Some(del) = desc.delete_procedure {
             unsafe { del(ptr.as_ptr()) };
         }
@@ -141,11 +144,20 @@ pub mod test_support {
     use core::sync::atomic::{AtomicUsize, Ordering};
 
     pub static TEST_DELETE_CALLS: AtomicUsize = AtomicUsize::new(0);
+    pub static TEST_CLOSE_CALLS: AtomicUsize = AtomicUsize::new(0);
 
     #[repr(C)]
     pub struct TestStubObject {
         pub header: ObjectHeader,
         pub payload: u64,
+    }
+
+    pub unsafe fn test_stub_close_static(_p: *mut ()) {
+        TEST_CLOSE_CALLS.fetch_add(1, Ordering::Relaxed);
+    }
+
+    pub fn test_stub_ok_to_close(_p: *mut ()) -> bool {
+        true
     }
 
     pub unsafe fn test_stub_delete_static(p: *mut ()) {
@@ -156,7 +168,7 @@ pub mod test_support {
 
 #[cfg(test)]
 mod tests {
-    use super::test_support::{TestStubObject, TEST_DELETE_CALLS};
+    use super::test_support::{TestStubObject, TEST_CLOSE_CALLS, TEST_DELETE_CALLS};
     use super::*;
     use alloc::boxed::Box as AllocBox;
     use core::ptr::NonNull;
@@ -165,6 +177,7 @@ mod tests {
     #[test]
     fn delete_runs_once_on_last_handle_close_path() {
         TEST_DELETE_CALLS.store(0, Ordering::Relaxed);
+        TEST_CLOSE_CALLS.store(0, Ordering::Relaxed);
         let t = AllocBox::new(TestStubObject {
             header: ObjectHeader::new(ObjectTypeIndex::TEST_STUB),
             payload: 42,
@@ -174,6 +187,7 @@ mod tests {
         unsafe {
             ob_on_last_handle_released(p);
         }
+        assert_eq!(TEST_CLOSE_CALLS.load(Ordering::Relaxed), 1);
         assert_eq!(TEST_DELETE_CALLS.load(Ordering::Relaxed), 1);
     }
 }

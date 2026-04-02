@@ -497,6 +497,35 @@ pub fn mount_session0_winsta0_default(
     ns.insert_session_child(0, b"WinSta0", winsta.cast())
 }
 
+#[must_use]
+pub fn ok_to_close_desktop_static(_p: *mut ()) -> bool {
+    true
+}
+
+#[must_use]
+pub fn ok_to_close_window_station_static(_p: *mut ()) -> bool {
+    true
+}
+
+/// Last handle released: drop HWND/Z-order and message counters before [`delete_desktop_static`].
+pub unsafe fn close_desktop_static(p: *mut ()) {
+    let d = unsafe { &mut *p.cast::<DesktopObject>() };
+    let mut g = d.win.lock();
+    for s in g.slots.iter_mut() {
+        *s = DesktopWindowSlot::EMPTY;
+    }
+    g.z_head = None;
+    d.posted_message_count.store(0, Ordering::Relaxed);
+    d.z_order_top_count.store(0, Ordering::Relaxed);
+}
+
+/// Last handle released: reset bring-up fields before [`delete_window_station_static`].
+pub unsafe fn close_window_station_static(p: *mut ()) {
+    let ws = unsafe { &mut *p.cast::<WindowStationObject>() };
+    ws.clipboard_seq.store(0, Ordering::Relaxed);
+    ws.logon_token = 0;
+}
+
 pub unsafe fn delete_desktop_static(p: *mut ()) {
     #[cfg(test)]
     {
@@ -512,6 +541,7 @@ pub unsafe fn delete_desktop_static(p: *mut ()) {
 pub unsafe fn delete_window_station_static(p: *mut ()) {
     let ws = unsafe { &mut *p.cast::<WindowStationObject>() };
     for c in ws.desktops.iter_objects() {
+        close_desktop_static(c.as_ptr());
         delete_desktop_static(c.as_ptr());
     }
     ws.desktops.clear_for_teardown();
