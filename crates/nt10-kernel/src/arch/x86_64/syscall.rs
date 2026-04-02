@@ -14,6 +14,9 @@ extern "C" {
 /// Sentinel matching [`SyscallTable::dispatch`] when the slot is empty.
 pub const ZR_STATUS_NOT_IMPLEMENTED: i32 = -1_073_741_822;
 
+/// Magic syscall number for [`crate::mm::bringup_user::USER_RING3_UEFI_PROBE_SYSCALL`] (serial one-liner).
+pub const ZR_UEFI_R3_PROBE_SYSCALL: u64 = 0x5ED;
+
 static ZR_SYSCALL_STATE: SpinLock<SyscallTable> = SpinLock::new(SyscallTable::empty());
 
 pub fn zr_syscall_register(index: u16, f: SyscallFn) -> Result<(), ()> {
@@ -43,6 +46,10 @@ extern "C" fn zircon_syscall_from_user(
     a4: u64,
     a5: u64,
 ) -> i64 {
+    if num == ZR_UEFI_R3_PROBE_SYSCALL {
+        crate::hal::x86_64::serial::write_line(b"nt10-kernel: ZR_UEFI_R3_SYSCALL_PROBE_OK\r\n");
+        return 0;
+    }
     let r = zr_syscall_dispatch(num as u16, a1, a2, a3, a4, a5, 0);
     if r == ZR_STATUS_NOT_IMPLEMENTED {
         crate::hal::x86_64::serial::write_line(b"nt10-kernel: user syscall smoke\r\n");
