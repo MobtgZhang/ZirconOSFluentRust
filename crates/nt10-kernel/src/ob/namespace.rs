@@ -13,6 +13,12 @@ pub const SESSION0_WINSTA0: &[u8] = br"\Sessions\0\WinSta0";
 /// Default desktop on `WinSta0` (login / apps share this path in the simplified model).
 pub const SESSION0_DESKTOP_DEFAULT: &[u8] = br"\Sessions\0\WinSta0\Default";
 
+/// Public-docs alias: `\Windows\WindowStations\` (session 0 bring-up only maps `WinSta0` below).
+///
+/// Lookup helpers rewrite this prefix to [`SESSION0_WINSTA0`] so paths match
+/// [`super::winsta::lookup_session_winsta_desktop_path`] without duplicating mounts.
+pub const WINDOWS_WINSTATIONS_PREFIX: &[u8] = br"\Windows\WindowStations\";
+
 /// Supported session directory slots (`\Sessions\0\` … `\Sessions\7\`).
 pub const MAX_SESSION_DIRS: usize = 8;
 
@@ -37,6 +43,29 @@ pub fn parse_session_id_and_name(rest: &[u8]) -> Option<(usize, &[u8])> {
         return None;
     }
     Some((sid, &rest[2..]))
+}
+
+/// Rewrites `\Windows\WindowStations\WinSta0[...]` into `\Sessions\0\WinSta0[...]` for object lookup.
+///
+/// Returns byte length written to `out` on success. Other station names are rejected in this bring-up alias.
+#[must_use]
+pub fn normalize_winsta_path_to_sessions(path: &[u8], out: &mut [u8]) -> Option<usize> {
+    let rest = path.strip_prefix(WINDOWS_WINSTATIONS_PREFIX)?;
+    if !rest.starts_with(b"WinSta0") {
+        return None;
+    }
+    let tail = rest.strip_prefix(b"WinSta0").unwrap_or(&[]);
+    if !tail.is_empty() && tail[0] != b'\\' {
+        return None;
+    }
+    let base = SESSION0_WINSTA0;
+    let n = base.len().saturating_add(tail.len());
+    if n > out.len() {
+        return None;
+    }
+    out[..base.len()].copy_from_slice(base);
+    out[base.len()..n].copy_from_slice(tail);
+    Some(n)
 }
 
 /// Per-session directory buckets (Session 0 at index 0, etc.).
@@ -92,6 +121,32 @@ impl NamespaceBuckets {
         }
         self.by_session[sid].insert(name, object)
     }
+
+    pub fn remove_session_child(&mut self, session_id: u8, name: &[u8]) -> Result<(), ()> {
+        let sid = session_id as usize;
+        if sid >= MAX_SESSION_DIRS {
+            return Err(());
+        }
+        self.by_session[sid].remove(name)
+    }
+}
+
+/// Split `WinSta0\Default` into `WinSta0` + `Some(Default)`; `WinSta0` → `None` desktop.
+#[must_use]
+pub fn split_first_path_segment(s: &[u8]) -> Option<(&[u8], Option<&[u8]>)> {
+    if s.is_empty() {
+        return None;
+    }
+    if let Some(i) = s.iter().position(|&c| c == b'\\') {
+        let left = &s[..i];
+        let right = &s[i + 1..];
+        if left.is_empty() {
+            return None;
+        }
+        Some((left, Some(right)))
+    } else {
+        Some((s, None))
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -137,5 +192,14 @@ mod tests {
             .is_ok());
         assert_eq!(ns.lookup_session_path(br"\Sessions\1\Foo"), Some(a));
         assert_eq!(ns.lookup_session_path(br"\Sessions\0\Bar"), Some(b));
+    }
+
+    #[test]
+    fn legacy_windows_winstations_alias() {
+        let mut buf = [0u8; 96];
+        let n = normalize_winsta_path_to_sessions(br"\Windows\WindowStations\WinSta0\Default", &mut buf)
+            .expect("alias");
+        assert_eq!(&buf[..n], SESSION0_DESKTOP_DEFAULT);
+        assert!(normalize_winsta_path_to_sessions(br"\Windows\WindowStations\Other\X", &mut buf).is_none());
     }
 }

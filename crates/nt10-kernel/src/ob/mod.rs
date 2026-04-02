@@ -7,3 +7,4 @@ pub mod namespace;
 pub mod object;
 pub mod symlink;
 pub mod wait;
+pub mod winsta;

@@ -55,4 +55,32 @@ impl DirectoryObject {
         }
         None
     }
+
+    pub fn remove(&mut self, name: &[u8]) -> Result<(), ()> {
+        for i in 0..self.count {
+            let matches = self.entries[i].as_ref().is_some_and(|e| {
+                name.len() == e.name_len && name == &e.name[..e.name_len]
+            });
+            if matches {
+                self.entries[i] = self.entries[self.count - 1].take();
+                self.count -= 1;
+                return Ok(());
+            }
+        }
+        Err(())
+    }
+
+    pub fn iter_objects(&self) -> impl Iterator<Item = NonNull<()>> + '_ {
+        self.entries[..self.count]
+            .iter()
+            .flatten()
+            .map(|e| e.object)
+    }
+
+    /// Clear slots without invoking per-object delete (caller tears children down first).
+    pub fn clear_for_teardown(&mut self) {
+        const NONE: Option<DirEntry> = None;
+        self.entries = [NONE; MAX_ENTRIES];
+        self.count = 0;
+    }
 }

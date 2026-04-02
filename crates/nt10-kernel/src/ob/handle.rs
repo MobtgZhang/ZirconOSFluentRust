@@ -74,25 +74,37 @@ impl HandleTable {
         let r = self.ref_count[idx].saturating_sub(1);
         self.ref_count[idx] = r;
         if r == 0 {
-            self.slots[idx].take()
-        } else {
-            None
+            let obj = self.slots[idx].take();
+            if let Some(p) = obj {
+                let hdr = p.cast::<crate::ob::object::ObjectHeader>();
+                if unsafe { hdr.as_ref().is_managed_object() } {
+                    unsafe {
+                        crate::ob::object::ob_on_last_handle_released(p);
+                    }
+                    return None;
+                }
+                return Some(p);
+            }
         }
+        None
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    extern crate alloc;
 
     #[test]
     fn refcount_dup_delays_release() {
         let mut t = HandleTable::new();
-        let p = NonNull::dangling();
+        let b = alloc::boxed::Box::new(0u64);
+        let p = NonNull::new(alloc::boxed::Box::into_raw(b).cast::<()>()).unwrap();
         let h = t.alloc_raw(p).unwrap();
         assert!(t.reference_raw(h).is_ok());
         assert!(t.close_raw(h).is_none());
         let released = t.close_raw(h);
         assert_eq!(released, Some(p));
+        let _ = unsafe { alloc::boxed::Box::from_raw(p.as_ptr().cast::<u64>()) };
     }
 }
