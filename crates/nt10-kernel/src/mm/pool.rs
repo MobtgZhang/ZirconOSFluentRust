@@ -2,6 +2,12 @@
 //!
 //! [`refill_class`] already **packs multiple small chunks into one 4 KiB PFN**; for large contiguous
 //! off-screen or Section buffers use [`alloc_pfn_page_slab`] / [`free_pfn_page_slab`].
+//!
+//! Diagnostics: Cargo features `mm-pool-stats` (alloc/free counts), `mm-pool-tag-hist` (tag%8 buckets).
+//! `debug_assertions` builds track a **live allocation count**; a free that would drop it below zero
+//! trips `debug_assert!` (suspected double-free or balance bug). MM docs:
+//! [MM-Pool-and-PFN-Bringup.md](../../../../docs/en/MM-Pool-and-PFN-Bringup.md),
+//! [MM-Goals-and-Invariants.md](../../../../docs/en/MM-Goals-and-Invariants.md).
 
 use core::sync::atomic::{AtomicU32, AtomicUsize, Ordering};
 
@@ -18,6 +24,33 @@ const CLASSES: [usize; 9] = [16, 32, 64, 128, 256, 512, 1024, 2048, 4096];
 
 static POOL_LOCK: SpinLock<PoolState> = SpinLock::new(PoolState::new());
 static POOL_BYTES: AtomicUsize = AtomicUsize::new(0);
+
+#[cfg(feature = "mm-pool-stats")]
+static POOL_ALLOCS: AtomicUsize = AtomicUsize::new(0);
+#[cfg(feature = "mm-pool-stats")]
+static POOL_FREES: AtomicUsize = AtomicUsize::new(0);
+
+#[cfg(feature = "mm-pool-tag-hist")]
+static POOL_TAG_BUCKETS: [AtomicU32; 8] = [
+    AtomicU32::new(0),
+    AtomicU32::new(0),
+    AtomicU32::new(0),
+    AtomicU32::new(0),
+    AtomicU32::new(0),
+    AtomicU32::new(0),
+    AtomicU32::new(0),
+    AtomicU32::new(0),
+];
+
+/// Successful alloc minus successful free (debug only); catches global imbalance / suspected double-free.
+#[cfg(debug_assertions)]
+static POOL_DBG_LIVE: AtomicUsize = AtomicUsize::new(0);
+
+#[cfg(feature = "mm-pool-tag-hist")]
+#[inline]
+const fn tag_bucket_index(tag: u32) -> usize {
+    (tag as usize) % 8
+}
 
 struct PoolState {
     /// Stored as `usize` so the pool lock is `Sync` (raw pointers are not `Send`).
@@ -122,6 +155,12 @@ pub fn ex_allocate_pool_with_tag(size: usize, tag: u32) -> *mut u8 {
         let user = p.add(8);
         let payload = CLASSES[idx] - 8;
         core::ptr::write_bytes(user, 0, payload);
+        #[cfg(feature = "mm-pool-stats")]
+        POOL_ALLOCS.fetch_add(1, Ordering::Relaxed);
+        #[cfg(feature = "mm-pool-tag-hist")]
+        POOL_TAG_BUCKETS[tag_bucket_index(tag)].fetch_add(1, Ordering::Relaxed);
+        #[cfg(debug_assertions)]
+        POOL_DBG_LIVE.fetch_add(1, Ordering::Relaxed);
         user
     }
 }
@@ -140,9 +179,22 @@ pub fn ex_free_pool_with_tag(ptr: *mut u8, tag: u32) {
             log_line_serial(SUB_MM, b"ex_free_pool_with_tag ignored (tag/class mismatch)");
             return;
         }
+        #[cfg(debug_assertions)]
+        {
+            let prev = POOL_DBG_LIVE.load(Ordering::Acquire);
+            debug_assert!(
+                prev > 0,
+                "pool: live count underflow (double-free or alloc/free mismatch)"
+            );
+            POOL_DBG_LIVE.fetch_sub(1, Ordering::Release);
+        }
+        #[cfg(feature = "mm-pool-tag-hist")]
+        POOL_TAG_BUCKETS[tag_bucket_index(stored_tag)].fetch_sub(1, Ordering::Relaxed);
         let mut g = POOL_LOCK.lock();
         let state = &mut *g;
         push_head(state, idx, hdr);
+        #[cfg(feature = "mm-pool-stats")]
+        POOL_FREES.fetch_add(1, Ordering::Relaxed);
     }
 }
 
@@ -180,6 +232,50 @@ pub fn pool_alloc_fail_count() -> u32 {
     POOL_ALLOC_FAILS.load(Ordering::Relaxed)
 }
 
+/// `(successful_allocs, successful_frees, approx_bytes_in_slab_pages)` when `mm-pool-stats` is enabled;
+/// otherwise `(0, 0, current POOL_BYTES)`.
+#[must_use]
+pub fn pool_stats_snapshot() -> (usize, usize, usize) {
+    #[cfg(feature = "mm-pool-stats")]
+    {
+        (
+            POOL_ALLOCS.load(Ordering::Relaxed),
+            POOL_FREES.load(Ordering::Relaxed),
+            POOL_BYTES.load(Ordering::Relaxed),
+        )
+    }
+    #[cfg(not(feature = "mm-pool-stats"))]
+    {
+        (0, 0, POOL_BYTES.load(Ordering::Relaxed))
+    }
+}
+
+/// Snapshot of [`POOL_TAG_BUCKETS`] when `mm-pool-tag-hist` is enabled; otherwise zeros.
+#[must_use]
+pub fn pool_tag_buckets_snapshot() -> [u32; 8] {
+    #[cfg(feature = "mm-pool-tag-hist")]
+    {
+        core::array::from_fn(|i| POOL_TAG_BUCKETS[i].load(Ordering::Relaxed))
+    }
+    #[cfg(not(feature = "mm-pool-tag-hist"))]
+    {
+        [0; 8]
+    }
+}
+
+/// Debug-only live count (outstanding successful allocs not yet freed). Zero in non-`debug_assertions` builds.
+#[must_use]
+pub fn pool_debug_live_count() -> usize {
+    #[cfg(debug_assertions)]
+    {
+        POOL_DBG_LIVE.load(Ordering::Relaxed)
+    }
+    #[cfg(not(debug_assertions))]
+    {
+        0
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -206,5 +302,34 @@ mod tests {
         let p2 = ex_allocate_pool_with_tag(16, 0x4141_4141);
         assert!(!p2.is_null());
         ex_free_pool_with_tag(p2, 0x4141_4141);
+    }
+
+    #[test]
+    fn pool_stats_snapshot_smoke() {
+        let (a, f, b) = pool_stats_snapshot();
+        let _ = (a, f, b);
+    }
+
+    #[cfg(feature = "mm-pool-tag-hist")]
+    #[test]
+    fn tag_buckets_track_tag_mod_8() {
+        let t0 = 0x0102_0304u32;
+        let t1 = t0.wrapping_add(8);
+        let p0 = ex_allocate_pool_with_tag(16, t0);
+        let p1 = ex_allocate_pool_with_tag(16, t1);
+        if p0.is_null() || p1.is_null() {
+            if !p0.is_null() {
+                ex_free_pool_with_tag(p0, t0);
+            }
+            if !p1.is_null() {
+                ex_free_pool_with_tag(p1, t1);
+            }
+            return;
+        }
+        let b = pool_tag_buckets_snapshot();
+        let i = tag_bucket_index(t0);
+        assert!(b[i] >= 2, "same bucket for tags differing by 8");
+        ex_free_pool_with_tag(p0, t0);
+        ex_free_pool_with_tag(p1, t1);
     }
 }

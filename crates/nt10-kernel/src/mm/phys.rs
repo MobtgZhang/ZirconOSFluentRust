@@ -3,6 +3,10 @@
 //! **Note (vs. internal roadmap `ideas/claude/content1.2.md`):** older text may still say “`PfnBump`”;
 //! this module uses the **buddy allocator** plus [`super::pfn`] for bring-up, not a bump-only cursor.
 //! All frames are tracked in [`super::pfn`] when they fit [`super::pfn::MAX_PHYS_PAGES`].
+//!
+//! [`pfn_pool_starved_flag`] is set when [`pfn_bringup_alloc`] fails (memory pressure hook for syscalls / telemetry).
+
+use core::sync::atomic::{AtomicBool, Ordering};
 
 use super::boot_mem::{usable_conventional_ranges, UsablePhysRange};
 use super::buddy;
@@ -10,6 +14,9 @@ use super::pfn;
 use crate::handoff::ZirconBootInfo;
 
 pub use super::{PAGE_SHIFT, PAGE_SIZE};
+
+/// Set when [`pfn_bringup_alloc`] fails (memory pressure / pool empty). Tests and telemetry may poll [`pfn_pool_starved_flag`].
+static PFN_POOL_STARVED: AtomicBool = AtomicBool::new(false);
 
 /// `usable_conventional_ranges` output capacity (UEFI may fragment conventional memory beyond 8 runs).
 pub const USABLE_RANGE_SLOTS: usize = 128;
@@ -54,7 +61,20 @@ pub unsafe fn pfn_bringup_init(info: &ZirconBootInfo) {
 /// Allocate one 4 KiB frame; returns **physical** base address.
 #[must_use]
 pub fn pfn_bringup_alloc() -> Option<u64> {
-    buddy::alloc_order(0)
+    let r = buddy::alloc_order(0);
+    if r.is_none() {
+        PFN_POOL_STARVED.store(true, Ordering::Release);
+    }
+    r
+}
+
+#[must_use]
+pub fn pfn_pool_starved_flag() -> bool {
+    PFN_POOL_STARVED.load(Ordering::Acquire)
+}
+
+pub fn pfn_pool_clear_starved_flag() {
+    PFN_POOL_STARVED.store(false, Ordering::Release);
 }
 
 /// Free a single 4 KiB frame allocated from the buddy pool.

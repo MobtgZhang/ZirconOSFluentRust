@@ -1,4 +1,7 @@
 //! Section objects (file-backed or anonymous memory sections for mapping).
+//!
+//! **Limits:** [`SectionBacking::AnonymousPages`] is capped by [`SECTION_ANONYMOUS_PAGE_CAP`]; exceeding
+//! it requires a future PFN list. Tear-down order: drop VAD mappings before [`SectionObject::release`].
 
 use core::ptr::NonNull;
 use core::sync::atomic::{AtomicU32, Ordering};
@@ -10,6 +13,17 @@ use super::PAGE_SIZE;
 
 /// Max 4 KiB frames tracked inline per anonymous section (no `alloc` global allocator on bare metal).
 pub const SECTION_ANONYMOUS_PAGE_CAP: usize = 256;
+
+/// [`SectionObject::commit_anonymous_pages`] failures (explicit semantics vs silent `Err(())`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SectionCommitError {
+    /// Inline [`SECTION_ANONYMOUS_PAGE_CAP`] exhausted; use a different backing strategy (future: spill list).
+    AnonymousCapExceeded,
+    /// Cannot grow anonymous storage on a file-backed section.
+    FileBacked,
+    /// PFN pool could not supply a frame.
+    PfnExhausted,
+}
 
 /// Backing store for a section (clean-room layout).
 #[derive(Clone, Debug)]
@@ -79,7 +93,7 @@ impl SectionObject {
     }
 
     /// Grow anonymous backing by `pages` frames from the PFN pool.
-    pub fn commit_anonymous_pages(&mut self, pages: usize) -> Result<(), ()> {
+    pub fn commit_anonymous_pages(&mut self, pages: usize) -> Result<(), SectionCommitError> {
         if pages == 0 {
             return Ok(());
         }
@@ -87,9 +101,9 @@ impl SectionObject {
             SectionBacking::AnonymousPages { phys, count } => {
                 for _ in 0..pages {
                     if *count >= phys.len() {
-                        return Err(());
+                        return Err(SectionCommitError::AnonymousCapExceeded);
                     }
-                    let p = pfn_bringup_alloc().ok_or(())?;
+                    let p = pfn_bringup_alloc().ok_or(SectionCommitError::PfnExhausted)?;
                     phys[*count] = p;
                     *count += 1;
                 }
@@ -100,15 +114,15 @@ impl SectionObject {
                 let mut count = 0usize;
                 for _ in 0..pages {
                     if count >= phys.len() {
-                        return Err(());
+                        return Err(SectionCommitError::AnonymousCapExceeded);
                     }
-                    phys[count] = pfn_bringup_alloc().ok_or(())?;
+                    phys[count] = pfn_bringup_alloc().ok_or(SectionCommitError::PfnExhausted)?;
                     count += 1;
                 }
                 self.backing = SectionBacking::AnonymousPages { phys, count };
                 Ok(())
             }
-            SectionBacking::FileBackedStub { .. } => Err(()),
+            SectionBacking::FileBackedStub { .. } => Err(SectionCommitError::FileBacked),
         }
     }
 
@@ -205,5 +219,23 @@ mod tests {
     fn committed_anonymous_none_is_zero() {
         let s = SectionObject::new(4096, false, SectionBacking::None);
         assert_eq!(s.committed_anonymous_bytes(), 0);
+    }
+
+    #[test]
+    fn file_backed_rejects_anonymous_commit() {
+        let mut s = SectionObject::new(
+            4096,
+            false,
+            SectionBacking::FileBackedStub {
+                mount_slot: 0,
+                root_name11: *b"X       YYY",
+                offset: 0,
+                size: 4096,
+            },
+        );
+        assert_eq!(
+            s.commit_anonymous_pages(1),
+            Err(super::SectionCommitError::FileBacked)
+        );
     }
 }

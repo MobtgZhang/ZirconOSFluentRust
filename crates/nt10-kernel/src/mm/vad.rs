@@ -377,6 +377,11 @@ impl VadTable {
         self.root < 0
     }
 
+    /// Drop every VAD node (e.g. process teardown). Does not unmap PTEs or free PFNs — caller must do that first or accept leaks.
+    pub fn clear(&mut self) {
+        self.reset_tree();
+    }
+
     pub fn iter(&self) -> impl Iterator<Item = &VadEntry> {
         self.nodes
             .iter()
@@ -402,6 +407,22 @@ mod tests {
         assert!(t.insert(e).is_ok());
         assert!(t.find_by_va(0x15_0000).is_some());
         assert!(t.find_by_va(0x09_0000).is_none());
+    }
+
+    #[test]
+    fn vad_clear_empties_tree() {
+        let mut t = VadTable::new();
+        let e = VadEntry::new_range(
+            0x10_0000,
+            0x20_0000,
+            VadKind::Private,
+            PageProtect::ReadWrite,
+            true,
+        );
+        t.insert(e).unwrap();
+        assert_eq!(t.len(), 1);
+        t.clear();
+        assert!(t.is_empty());
     }
 
     #[test]

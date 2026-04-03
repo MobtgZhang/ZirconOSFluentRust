@@ -72,6 +72,8 @@ impl PageFlags {
 pub enum MapError {
     OutOfTablePages,
     InvalidVirtualAddress,
+    /// Leaf PTE already present with a **different** physical frame (idempotent remap of same PA is OK).
+    VirtualAlreadyMapped,
 }
 
 fn pml4_i(va: u64) -> usize {
@@ -116,6 +118,11 @@ unsafe fn ensure_next_level(parent_phys: u64, index: usize) -> Result<u64, MapEr
 ///
 /// # Safety
 /// `cr3_phys` must be the active PML4 physical base; caller must invalidate TLB for `va` if required.
+/// Install a 4 KiB PTE under `cr3_phys`.
+///
+/// **SMP / TLB**: callers must invalidate on every CPU that may have the VA cached — e.g.
+/// [`crate::arch::x86_64::tlb::invlpg`] for the current address space, or
+/// [`crate::arch::x86_64::tlb::shootdown_range_all_cpus`] after modifying another CPU’s active CR3.
 pub unsafe fn map_4k(cr3_phys: u64, va: u64, pa: u64, flags: PageFlags) -> Result<(), MapError> {
     let _g = PT_WALK_LOCK.lock();
     if va & 0xFFF != 0 || pa & 0xFFF != 0 {
@@ -126,6 +133,16 @@ pub unsafe fn map_4k(cr3_phys: u64, va: u64, pa: u64, flags: PageFlags) -> Resul
     let pd = ensure_next_level(pdpt, pdpt_i(va))?;
     let pt = ensure_next_level(pd, pd_i(va))?;
     let slot = pt + (pt_i(va) as u64 * 8);
+    let old = read_pte(slot);
+    if (old & 1) != 0 {
+        let old_pa = old & 0x000F_FFFF_FFFF_F000;
+        let new_pte = flags.to_pte(pa);
+        let new_pa = new_pte & 0x000F_FFFF_FFFF_F000;
+        if old_pa == new_pa {
+            return Ok(());
+        }
+        return Err(MapError::VirtualAlreadyMapped);
+    }
     write_pte(slot, flags.to_pte(pa));
     Ok(())
 }

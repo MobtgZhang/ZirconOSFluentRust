@@ -5,6 +5,7 @@ pub const PAGE_SIZE: u64 = 1u64 << PAGE_SHIFT;
 
 pub mod boot_mem;
 pub mod buddy;
+pub mod bringup_syscall_vm;
 pub mod bringup_user;
 pub mod early_map;
 pub mod heap;

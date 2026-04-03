@@ -143,10 +143,19 @@ pub fn pfn_reference_dec(phys: u64) {
 
 #[cfg(test)]
 mod phys_index_tests {
+    use super::{managed_page_count, phys_to_index};
+
     #[test]
     fn binary_search_phys_index_logic() {
         let sorted = [0x1000u64, 0x2000u64, 0x3000u64];
         assert_eq!(sorted.binary_search(&0x2000).ok(), Some(1));
         assert!(sorted.binary_search(&0x1500).is_err());
+    }
+
+    #[test]
+    fn phys_to_index_misses_when_table_uninitialized() {
+        assert_eq!(managed_page_count(), 0);
+        assert_eq!(phys_to_index(0x1000), None);
+        assert_eq!(super::pfn_reference_count(0xDEAD_BEEF_0000), 0);
     }
 }

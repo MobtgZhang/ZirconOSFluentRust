@@ -19,7 +19,26 @@ pub const USER_BRINGUP_STACK_TOP: u64 = USER_BRINGUP_VA + 0x200_000;
 /// Upper bound for canonical 47-bit user addresses (exclusive of kernel canonical half).
 pub const USER_VA_LIMIT: u64 = 0x0000_7FFF_FFFF_FFFF;
 
+/// User or syscall **pointer** canonical check (lower canonical half only).
+/// Matches `#PF` path in [`crate::mm::page_fault`] and [`crate::arch::x86_64::syscall_abi::user_canonical_va_ok`].
+#[must_use]
+pub const fn user_pointer_canonical(va: u64) -> bool {
+    va < 0x0000_8000_0000_0000
+}
+
 #[must_use]
 pub const fn user_range_ok(start: u64, end: u64) -> bool {
     start >= USER_VA_BASE && end <= USER_VA_LIMIT && start < end
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn user_pointer_canonical_matches_kernel_half_split() {
+        assert!(user_pointer_canonical(0));
+        assert!(user_pointer_canonical(0x7FFF_FFFF_FFFF));
+        assert!(!user_pointer_canonical(0x8000_0000_0000));
+    }
 }

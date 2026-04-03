@@ -5,6 +5,10 @@
 //! **Order semantics:** `order = 0` → one 4 KiB page; `order = 9` → `2^9` pages = 512 pages =
 //! 2 MiB. [`MAX_ORDER`] allows larger blocks (e.g. 1 GiB at order 18) when RAM runs permit.
 //! Pages must be identity-mapped where the allocator reads/writes list links.
+//!
+//! **Invariants:** every [`alloc_order`] result is returned exactly once to [`free_order`] with the
+//! same `order`; only PFNs seeded from [`super::pfn`] after boot memory exclusion participate.
+//! See [MM-Goals-and-Invariants.md](../../../../docs/en/MM-Goals-and-Invariants.md).
 
 use super::pfn::{self, PageState};
 use super::PAGE_SIZE;
@@ -242,6 +246,11 @@ mod tests {
         let base = 0x1000u64;
         let o = max_order_for_block(base, 3);
         assert!(1u64 << o <= 3);
+    }
+
+    #[test]
+    fn max_order_zero_remaining_pages_is_zero() {
+        assert_eq!(max_order_for_block(0x1000u64, 0), 0);
     }
 
     #[test]

@@ -1,4 +1,7 @@
 //! Virtual address space helpers on top of [`super::vad::VadTable`] (ZirconOSFluent naming).
+//!
+//! Demand-paged resident pages are accounted in [`super::working_set::WorkingSetBringup`] from the #PF path
+//! (stub per-VAD cookie today).
 
 use super::user_va;
 use super::vad::{PageProtect, VadEntry, VadKind, VadTable};
@@ -40,6 +43,9 @@ pub fn reserve_user_range(
     }
     let start = align_down(start_va, PAGE_SIZE);
     let end = align_up(start_va.saturating_add(byte_len), PAGE_SIZE);
+    if start < user_va::USER_VA_BASE {
+        return Err(VmError::BadRange);
+    }
     if !user_va::user_range_ok(start, end) {
         return Err(VmError::BadRange);
     }
@@ -101,6 +107,28 @@ pub fn query_region(vad: &VadTable, va: u64) -> Option<VadEntry> {
     vad.find_by_va(va).copied()
 }
 
+/// Remove a **single** committed private VAD that exactly matches `[start, end)` (page-aligned).
+/// Does not unmap PTEs or free PFNs — pair with MM teardown that walks mappings.
+pub fn free_committed_private_range(
+    vad: &mut VadTable,
+    start: u64,
+    end: u64,
+) -> Result<(), VmError> {
+    let start = align_down(start, PAGE_SIZE);
+    let end = align_up(end, PAGE_SIZE);
+    if start >= end {
+        return Err(VmError::BadRange);
+    }
+    let e = *vad.find_by_va(start).ok_or(VmError::NotFound)?;
+    if e.start_va != start || e.end_va != end {
+        return Err(VmError::BadRange);
+    }
+    if e.kind != VadKind::Private || !e.committed {
+        return Err(VmError::InconsistentState);
+    }
+    vad.remove(start).map_err(|_| VmError::NotFound)
+}
+
 /// Phase 6 bring-up: associates a user VAD tree with a future per-process CR3 (Ring-3 csrss/smss).
 ///
 /// Today only [`Self::cr3`] is carried for documentation; install it when user threads gain a private
@@ -138,5 +166,23 @@ mod tests {
             query_region(&t, 0x300_0000).unwrap().protect,
             PageProtect::ReadWrite
         );
+    }
+
+    #[test]
+    fn reserve_below_user_base_rejected() {
+        let mut t = VadTable::new();
+        assert_eq!(
+            reserve_user_range(&mut t, 0x8000, 0x1000, PageProtect::ReadWrite),
+            Err(VmError::BadRange)
+        );
+    }
+
+    #[test]
+    fn free_committed_private_exact_range() {
+        let mut t = VadTable::new();
+        reserve_user_range(&mut t, 0x400_0000, 0x2000, PageProtect::ReadWrite).unwrap();
+        commit_reserved_range(&mut t, 0x400_0000, 0x400_2000).unwrap();
+        free_committed_private_range(&mut t, 0x400_0000, 0x400_2000).unwrap();
+        assert!(t.is_empty());
     }
 }
