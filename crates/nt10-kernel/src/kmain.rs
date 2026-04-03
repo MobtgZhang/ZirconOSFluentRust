@@ -1,4 +1,19 @@
 //! Kernel entry after firmware or multiboot-style loader.
+//!
+//! # Documented bring-up order (ZirconOSFluent)
+//!
+//! 1. **Serial** — [`crate::hal::x86_64::serial::init`], first logs.
+//! 2. **CPU tables** — GDT (built-in vs UEFI), [`crate::arch::x86_64::idt::init`], `#PF` + TLB IPI vectors,
+//!    [`crate::arch::x86_64::syscall::enable_extension_stub`].
+//! 3. **Early MM** — NX, low identity map ([`crate::arch::x86_64::paging::init_low_identity`]).
+//! 4. **Handoff** — If `boot != null`: [`crate::mm::boot_mem::validate_boot_info`], PFN / heap probe,
+//!    framebuffer parse, optional high-half mirror ([`crate::mm::high_half`]).
+//!    Invalid magic/version/map is logged and **skipped** (no PFN init from corrupt data); see
+//!    [`crate::infra_bringup::log_invalid_handoff`].
+//! 5. **Subsystems** — CSRSS host smoke, timer/APC vs UEFI-safe path, optional ring-3 bring-up.
+//! 6. **Idle** — `hlt` loop (UEFI desktop poll may run before this).
+//!
+//! Serial checkpoints: [`crate::infra_bringup`] (`kmain_phase_begin`, phase id).
 
 use crate::arch::x86_64::{gdt, idt, paging};
 use crate::hal::x86_64::serial;
@@ -19,6 +34,12 @@ pub unsafe extern "C" fn kmain_entry(boot: *const ZirconBootInfo) -> ! {
     let hal = X86Hal64;
     serial::init();
     log_line_hal(&hal, SUB_BOOT, b"serial online (COM1)");
+    crate::infra_bringup::run_serial_selftest_hooks(&hal);
+    crate::infra_bringup::log_init_checkpoint(
+        &hal,
+        crate::infra_bringup::PHASE_SERIAL,
+        b"phase_serial_done",
+    );
 
     #[cfg(target_arch = "x86_64")]
     {
@@ -50,6 +71,11 @@ pub unsafe extern "C" fn kmain_entry(boot: *const ZirconBootInfo) -> ! {
         );
     }
     log_line_hal(&hal, SUB_BOOT, b"IDT loaded (#PF 14, TLB IPI)");
+    crate::infra_bringup::log_init_checkpoint(
+        &hal,
+        crate::infra_bringup::PHASE_CPU_STATE,
+        b"phase_cpu_state_done",
+    );
 
     unsafe {
         paging::enable_nxe();
@@ -61,6 +87,11 @@ pub unsafe extern "C" fn kmain_entry(boot: *const ZirconBootInfo) -> ! {
     }
     log_line_hal(&hal, SUB_MM, b"early identity map (512 MiB, 2 MiB pages)");
     hal.flush_tlb_all();
+    crate::infra_bringup::log_init_checkpoint(
+        &hal,
+        crate::infra_bringup::PHASE_EARLY_MM,
+        b"phase_early_mm_done",
+    );
 
     let mut uefi_desktop_poll_fb: Option<FramebufferInfo> = None;
     #[cfg(target_arch = "x86_64")]
@@ -70,6 +101,11 @@ pub unsafe extern "C" fn kmain_entry(boot: *const ZirconBootInfo) -> ! {
         let info = &*boot;
         match crate::mm::boot_mem::validate_boot_info(info) {
             Ok(()) => {
+                crate::infra_bringup::log_init_checkpoint(
+                    &hal,
+                    crate::infra_bringup::PHASE_BOOT_INFO,
+                    b"phase_boot_info_ok",
+                );
                 log_line_hal(&hal, SUB_BOOT, b"ZirconBootInfo extended checks OK");
                 log_usize_hal(&hal, SUB_MM, b"mem_map_count=", info.mem_map_count);
                 let conv = unsafe { crate::mm::early_map::conventional_page_count(info) };
@@ -122,6 +158,11 @@ pub unsafe extern "C" fn kmain_entry(boot: *const ZirconBootInfo) -> ! {
                 }
                 match crate::drivers::video::display_mgr::parse_framebuffer_handoff(&info.framebuffer) {
                     Ok(fb) => {
+                        crate::infra_bringup::log_init_checkpoint(
+                            &hal,
+                            crate::infra_bringup::PHASE_VIDEO_HANDOFF,
+                            b"phase_video_handoff_ok",
+                        );
                         log_line_hal(&hal, SUB_VID, b"GOP framebuffer handoff OK");
                         log_u64_hal(&hal, SUB_VID, b"fb_base_phys=", fb.base_phys);
                         log_usize_hal(&hal, SUB_VID, b"fb_byte_len=", fb.byte_len);
@@ -191,20 +232,30 @@ pub unsafe extern "C" fn kmain_entry(boot: *const ZirconBootInfo) -> ! {
                     }
                 }
             }
-            Err(crate::mm::boot_mem::BootInfoError::MagicOrVersion) => {
-                log_line_hal(&hal, SUB_BOOT, b"handoff magic/version invalid");
-            }
-            Err(crate::mm::boot_mem::BootInfoError::NullMemoryMap) => {
-                log_line_hal(&hal, SUB_BOOT, b"handoff mem_map null with count>0");
-            }
-            Err(crate::mm::boot_mem::BootInfoError::BadDescriptorSize) => {
-                log_line_hal(&hal, SUB_BOOT, b"handoff descriptor size != 40");
+            Err(e) => {
+                crate::infra_bringup::log_invalid_handoff(&hal, e);
+                match e {
+                    crate::mm::boot_mem::BootInfoError::MagicOrVersion => {
+                        log_line_hal(&hal, SUB_BOOT, b"handoff magic/version invalid");
+                    }
+                    crate::mm::boot_mem::BootInfoError::NullMemoryMap => {
+                        log_line_hal(&hal, SUB_BOOT, b"handoff mem_map null with count>0");
+                    }
+                    crate::mm::boot_mem::BootInfoError::BadDescriptorSize => {
+                        log_line_hal(&hal, SUB_BOOT, b"handoff descriptor size != 40");
+                    }
+                }
             }
         }
     } else {
         log_line_hal(&hal, SUB_BOOT, b"no UEFI handoff (null pointer)");
     }
 
+    crate::infra_bringup::log_init_checkpoint(
+        &hal,
+        crate::infra_bringup::PHASE_SUBSYSTEMS,
+        b"phase_subsystems_begin",
+    );
     crate::subsystems::win32::csrss_host::bringup_kernel_thread_smoke();
 
     // QEMU `-kernel` / no firmware paging: we own PIC+LAPIC bring-up and enable IRQs.
@@ -242,7 +293,7 @@ pub unsafe extern "C" fn kmain_entry(boot: *const ZirconBootInfo) -> ! {
 
             let mut proc = crate::ps::process::EProcess::new_bootstrap();
             let _ = crate::mm::bringup_user::register_bringup_vad(&mut proc.vad_root);
-            crate::mm::page_fault::set_page_fault_vad_table(core::ptr::addr_of!(proc.vad_root));
+            crate::mm::page_fault::bind_page_fault_to_process_vad(&proc);
             proc.peb = crate::ps::peb::PebRef::bringup_smoke();
 
             let stub = crate::ke::sched::ThreadStub::new(8);
@@ -286,7 +337,7 @@ pub unsafe extern "C" fn kmain_entry(boot: *const ZirconBootInfo) -> ! {
                 proc.cr3_phys = new_cr3;
                 proc.peb = crate::ps::peb::PebRef::bringup_smoke();
                 if crate::mm::bringup_user::install_uefi_user_bringup_vads(&mut proc.vad_root).is_ok() {
-                    crate::mm::page_fault::set_page_fault_vad_table(core::ptr::addr_of!(proc.vad_root));
+                    crate::mm::page_fault::bind_page_fault_to_process_vad(&proc);
                     let code = crate::mm::bringup_user::USER_RING3_UEFI_PROBE_SYSCALL;
                     log_line_hal(
                         &hal,

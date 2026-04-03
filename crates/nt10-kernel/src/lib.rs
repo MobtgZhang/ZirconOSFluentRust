@@ -11,6 +11,7 @@ pub mod fs;
 pub mod hal;
 pub mod handoff;
 pub mod hyperv;
+pub mod infra_bringup;
 pub mod io;
 pub mod ke;
 pub mod kmain;
