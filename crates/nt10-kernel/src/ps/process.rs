@@ -1,8 +1,11 @@
 //! EPROCESS / KPROCESS placeholders.
 //!
-//! **Bring-up alignment:** [`EProcess::vad_root`] is what [`crate::mm::page_fault::set_page_fault_vad_table`] should
-//! track for user faults. Thread scheduling uses [`crate::ke::sched::ThreadStub`] / [`crate::ps::thread::EThread`]
-//! registered from kmain; full kernel relocate and production process teardown are roadmap gaps.
+//! **Bring-up alignment:** [`EProcess::vad_root`] must stay consistent with the global #PF VAD binding:
+//! call [`crate::mm::page_fault::bind_page_fault_to_process_vad`] (or [`crate::mm::page_fault::set_page_fault_vad_table`]
+//! with `addr_of!(self.vad_root)`) when this process becomes the active user address space, and clear or rebind
+//! when resetting the address space (see [`EProcess::bringup_reset_address_space`]) before another process’s `CR3`.
+//! Thread scheduling uses [`crate::ke::sched::ThreadStub`] / [`crate::ps::thread::EThread`] registered from kmain;
+//! full kernel relocate and production process teardown are roadmap gaps.
 
 use crate::mm::vad::VadTable;
 use crate::ob::handle::{HandleTable, KernelHandle};
@@ -63,5 +66,16 @@ impl EProcess {
     /// Closes a handle slot; managed [`crate::ob::object::ObjectHeader`] bodies run typed delete.
     pub fn close_handle(&mut self, h: KernelHandle) -> Option<NonNull<()>> {
         self.handles.close_raw(h)
+    }
+
+    /// Clears `cr3_phys` after user thread teardown; full page-table walk + PFN free is future work.
+    pub fn bringup_release_user_cr3_slot(&mut self) {
+        self.cr3_phys = 0;
+    }
+
+    /// Clears the VAD tree and CR3 slot. Does **not** unmap PTEs or free PFNs — use before publishing a fresh `CR3` or for documented leak-acceptable bring-up teardown.
+    pub fn bringup_reset_address_space(&mut self) {
+        self.vad_root.clear();
+        self.bringup_release_user_cr3_slot();
     }
 }

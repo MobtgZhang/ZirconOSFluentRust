@@ -10,11 +10,22 @@
 use crate::ke::sched::ThreadId;
 use crate::ps::process::ProcessId;
 
+/// Minimal scheduler-visible state (RR bring-up; no wait graph yet).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[repr(u8)]
+pub enum EThreadState {
+    Running = 0,
+    Ready = 1,
+    WaitingStub = 2,
+    TerminatedStub = 3,
+}
+
 /// Executive thread object (subset).
 #[derive(Clone, Copy, Debug)]
 pub struct EThread {
     pub tid: ThreadId,
     pub pid: ProcessId,
+    pub state: EThreadState,
     /// User-mode TEB base (bring-up); `0` if unset.
     pub teb_user_va: u64,
     /// Kernel `DesktopObject*` as `usize` (low-memory bring-up); `0` if unset.
@@ -27,6 +38,7 @@ impl EThread {
         Self {
             tid,
             pid,
+            state: EThreadState::Running,
             teb_user_va: 0,
             desktop_kernel_ptr: 0,
         }
@@ -37,5 +49,9 @@ impl EThread {
         self.teb_user_va = teb_user_va;
         self.desktop_kernel_ptr = desktop_kernel_ptr;
         self
+    }
+
+    pub fn mark_terminated_bringup(&mut self) {
+        self.state = EThreadState::TerminatedStub;
     }
 }
