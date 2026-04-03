@@ -166,6 +166,22 @@ pub fn fat32_count_root_short_names_chained(
     Err(())
 }
 
+/// Split a path on `\\` (optional leading `\\`); yields one 8.3-style segment and the rest.
+#[must_use]
+pub fn next_path_component_backslash(path: &[u8]) -> Option<(&[u8], &[u8])> {
+    let p = path.strip_prefix(b"\\").unwrap_or(path);
+    if p.is_empty() {
+        return None;
+    }
+    if let Some(i) = p.iter().position(|&c| c == b'\\') {
+        let (a, r) = p.split_at(i);
+        let tail = if r.len() > 1 { &r[1..] } else { &[] };
+        Some((a, tail))
+    } else {
+        Some((p, &[]))
+    }
+}
+
 /// Lists up to `out.len()` short (8.3) **file** names from the root directory cluster chain.
 /// Each name is the raw 11 directory bytes (space-padded); caller may trim spaces.
 #[must_use]
@@ -489,5 +505,19 @@ mod tests {
         assert_eq!(ln, 2);
         assert_eq!(&names[0], b"A       TXT");
         assert_eq!(&names[1], b"B       TXT");
+    }
+
+    #[test]
+    fn next_path_component_backslash_splits() {
+        assert_eq!(
+            next_path_component_backslash(br"DIR\FILE.TXT"),
+            Some((&b"DIR"[..], &b"FILE.TXT"[..]))
+        );
+        assert_eq!(
+            next_path_component_backslash(br"\SUB\NEXT"),
+            Some((&b"SUB"[..], &b"NEXT"[..]))
+        );
+        assert_eq!(next_path_component_backslash(br"ONLY"), Some((&b"ONLY"[..], &[][..])));
+        assert_eq!(next_path_component_backslash(br""), None);
     }
 }

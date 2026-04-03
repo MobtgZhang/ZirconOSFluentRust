@@ -1,4 +1,6 @@
 //! NTFS attributes — read-only walk of resident attribute list in a file record slice.
+//! Undocumented on-disk corners return partial results or stop the walk; do not infer layout from
+//! Windows-only internals — extend only from public NTFS descriptions + self-tests on sample images.
 
 /// End-of-attribute-list marker in little-endian records.
 pub const NTFS_ATTR_TYPE_END: u32 = 0xFFFF_FFFF;

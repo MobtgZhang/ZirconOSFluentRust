@@ -5,7 +5,8 @@ use core::sync::atomic::{AtomicPtr, Ordering};
 
 use crate::fs::fat32::{self, Fat32Bpb};
 use crate::io::device::BlockVolumeBringup;
-use crate::io::iomgr::io_complete_request;
+use crate::drivers::storage::virtio_blk::VirtioBlkMmioBringup;
+use crate::io::iomgr::{io_complete_request, io_read_block_volume_complete_irp};
 use crate::io::irp::Irp;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -41,6 +42,16 @@ impl VfsMountPoint {
     #[must_use]
     pub fn with_virtio_blk_linear_image(id: u32, whole_disk_image: &'static [u8]) -> Self {
         Self::with_ramdisk(id, whole_disk_image)
+    }
+
+    /// MMIO virtio-blk (polling); `dev` must outlive the mount (e.g. `static mut`).
+    #[must_use]
+    pub fn with_virtio_mmio_blk(id: u32, dev: *mut VirtioBlkMmioBringup) -> Self {
+        Self {
+            id: MountId(id),
+            volume_label: [0; 16],
+            block_volume: Some(BlockVolumeBringup::from_virtio_mmio(dev)),
+        }
     }
 }
 
@@ -178,7 +189,10 @@ fn append_fat32_root_files(mp: &VfsMountPoint, rows: &mut [[u8; 80]; 32], lens: 
     let Some(bv) = mp.block_volume.as_ref() else {
         return;
     };
-    let vol = unsafe { bv.disk.as_slice() };
+    let vol = match bv {
+        BlockVolumeBringup::Ramdisk(d) => unsafe { d.as_slice() },
+        BlockVolumeBringup::VirtioMmio(_) => return,
+    };
     if vol.len() < core::mem::size_of::<Fat32Bpb>() {
         return;
     }
@@ -247,7 +261,10 @@ pub fn vfs_read_fat32_root_file_short(
 ) -> Result<usize, ()> {
     let mp = vfs.get(slot).ok_or(())?;
     let bv = mp.block_volume.as_ref().ok_or(())?;
-    let vol = unsafe { bv.disk.as_slice() };
+    let vol = match bv {
+        BlockVolumeBringup::Ramdisk(d) => unsafe { d.as_slice() },
+        BlockVolumeBringup::VirtioMmio(_) => return Err(()),
+    };
     if vol.len() < core::mem::size_of::<Fat32Bpb>() {
         return Err(());
     }
@@ -270,7 +287,10 @@ pub fn vfs_read_fat32_root_file_partial(
 ) -> Result<usize, ()> {
     let mp = vfs.get(slot).ok_or(())?;
     let bv = mp.block_volume.as_ref().ok_or(())?;
-    let vol = unsafe { bv.disk.as_slice() };
+    let vol = match bv {
+        BlockVolumeBringup::Ramdisk(d) => unsafe { d.as_slice() },
+        BlockVolumeBringup::VirtioMmio(_) => return Err(()),
+    };
     if vol.len() < core::mem::size_of::<Fat32Bpb>() {
         return Err(());
     }
@@ -317,10 +337,7 @@ pub fn vfs_read_via_irp(
             return -1;
         }
     };
-    let n = vol.disk.read_at(h.position, buf);
-    h.position += n as u64;
-    io_complete_request(irp, 0, n);
-    0
+    io_read_block_volume_complete_irp(vol, &mut h.position, buf, irp)
 }
 
 #[cfg(test)]

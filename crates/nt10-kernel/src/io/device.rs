@@ -1,17 +1,24 @@
-//! DEVICE_OBJECT — RAM-backed block for VFS bring-up.
+//! DEVICE_OBJECT — RAM-backed block or VirtIO-MMIO blk for VFS bring-up.
 
-/// Block volume for a mounted filesystem (bring-up: wraps [`RamdiskDevice`]).
+use crate::drivers::storage::virtio_blk::VirtioBlkMmioBringup;
+
+/// Block volume for a mounted filesystem.
 #[derive(Clone, Copy)]
-pub struct BlockVolumeBringup {
-    pub disk: RamdiskDevice,
+pub enum BlockVolumeBringup {
+    Ramdisk(RamdiskDevice),
+    /// Identity-mapped [`VirtioBlkMmioBringup`] (static/`static mut`); polling read only.
+    VirtioMmio(*mut VirtioBlkMmioBringup),
 }
 
 impl BlockVolumeBringup {
     #[must_use]
     pub const fn from_static_slice(s: &'static [u8]) -> Self {
-        Self {
-            disk: RamdiskDevice::from_static_slice(s),
-        }
+        Self::Ramdisk(RamdiskDevice::from_static_slice(s))
+    }
+
+    #[must_use]
+    pub const fn from_virtio_mmio(dev: *mut VirtioBlkMmioBringup) -> Self {
+        Self::VirtioMmio(dev)
     }
 }
 
