@@ -134,6 +134,18 @@ fn phase_tag(p: SmssPhase) -> u8 {
     }
 }
 
+/// Walk [`SMSS_PHASE_ORDER`]: system phase (namespace hook) then each [`next_phase`] with hooks.
+/// Does **not** load `smss.exe`; suitable for serial-ordered bring-up tests.
+pub fn smss_run_documented_phase_chain(
+    tracker: &mut SmssPhaseTracker,
+    hooks: &SmssPhaseHooks,
+    namespace: &mut NamespaceBuckets,
+) -> Result<(), ()> {
+    smss_stub_run_system_phase(tracker, hooks, namespace)?;
+    while tracker.advance_invoke(hooks).is_some() {}
+    Ok(())
+}
+
 /// Bring-up: records last phase and a placeholder system [`ProcessId`] after stub system process creation.
 pub fn smss_stub_run_system_phase(
     tracker: &mut SmssPhaseTracker,
@@ -230,5 +242,26 @@ mod phase6_tests {
         assert!(try_register_ring3_placeholder_process().is_err());
         assert!(try_launch_ring3_smss_from_vfs().is_err());
         assert!(try_smss_alpc_start_csrss_stub(ProcessId(1)).is_err());
+    }
+
+    #[test]
+    fn documented_phase_chain_runs_hooks_in_order() {
+        static HIT: core::sync::atomic::AtomicU8 = core::sync::atomic::AtomicU8::new(0);
+        let hooks = SmssPhaseHooks {
+            on_system_process: Some(|| {
+                HIT.fetch_or(1, Ordering::SeqCst);
+            }),
+            on_win32_subsystem: Some(|| {
+                HIT.fetch_or(2, Ordering::SeqCst);
+            }),
+            on_interactive_logon: Some(|| {
+                HIT.fetch_or(4, Ordering::SeqCst);
+            }),
+        };
+        let mut tr = SmssPhaseTracker::new();
+        let mut ns = NamespaceBuckets::new();
+        smss_run_documented_phase_chain(&mut tr, &hooks, &mut ns).expect("chain");
+        let v = HIT.load(Ordering::SeqCst);
+        assert_eq!(v, 7, "expected all three hooks");
     }
 }
