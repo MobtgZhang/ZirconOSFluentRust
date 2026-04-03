@@ -55,6 +55,23 @@ pub struct Pe64Headers {
 }
 
 impl Pe64Headers {
+    /// TLS directory RVA/size from the PE optional header data directory (public COFF layout).
+    #[must_use]
+    pub const fn tls_directory(self) -> (u32, u32) {
+        (self.tls_rva, self.tls_size)
+    }
+
+    /// Exception directory RVA/size; applying unwind/xdata is not implemented in the loader.
+    #[must_use]
+    pub const fn exception_directory(self) -> (u32, u32) {
+        (self.exception_rva, self.exception_size)
+    }
+
+    #[must_use]
+    pub const fn has_exception_directory(self) -> bool {
+        self.exception_rva != 0 && self.exception_size != 0
+    }
+
     #[must_use]
     pub const fn is_windows_gui_subsystem(self) -> bool {
         self.subsystem == IMAGE_SUBSYSTEM_WINDOWS_GUI

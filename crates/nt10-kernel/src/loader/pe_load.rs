@@ -1,4 +1,7 @@
 //! Bring-up: VFS → PE headers → optional ASLR slide + base reloc application.
+//!
+//! **Backlog (PE/COFF spec, clean-room)**: TLS directory, unwind metadata, and the x64 exception
+//! directory are not applied in this module — implement with spec + self-tests, not retail binaries.
 
 use super::aslr;
 use super::import_::count_import_descriptors;
@@ -19,6 +22,16 @@ use crate::mm::nx_image::nx_pte_for_section_characteristics;
 #[cfg(target_arch = "x86_64")]
 use crate::mm::pt::{self, PageFlags};
 
+/// Image page count above which [`pe_lazy_map_recommended`] signals **future** demand-mapping (still eager today).
+pub const PE_LAZY_MAP_THRESHOLD_PAGES: u64 = 256;
+
+#[must_use]
+pub fn pe_lazy_map_recommended(headers: &Pe64Headers) -> bool {
+    let sz = headers.size_of_image as u64;
+    let pages = sz.saturating_add(crate::mm::PAGE_SIZE - 1) / crate::mm::PAGE_SIZE;
+    pages > PE_LAZY_MAP_THRESHOLD_PAGES
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum PeLoadError {
     Vfs,
@@ -28,6 +41,8 @@ pub enum PeLoadError {
     RelocsRequiredButMissing,
     /// x86_64: failed to install per-page mappings for a PE section.
     SectionMap,
+    /// x64 exception directory is present; unwind registration is not implemented (predictable reject).
+    ExceptionDirectoryUnsupported,
 }
 
 /// Result of loading into an in-memory buffer (same layout as on-disk for bring-up).
@@ -116,7 +131,7 @@ pub unsafe fn map_pe_image_sections_bringup(
                     if pt::map_4k(cr3, gvaddr, pa, flags).is_err() {
                         return Err(PeLoadError::SectionMap);
                     }
-                    crate::arch::x86_64::tlb::invlpg(gvaddr);
+                    crate::arch::x86_64::tlb::flush_after_pte_change(cr3, gvaddr);
                 }
             }
             page_rva = page_rva.saturating_add(4096);
@@ -151,6 +166,9 @@ pub fn load_pe_from_vfs_bringup(
 
 fn finish_pe_in_buffer(buf: &mut [u8], n: usize, aslr_seed: u64) -> Result<PeLoadBringup, PeLoadError> {
     let headers = parse_pe64_headers(&buf[..n]).map_err(PeLoadError::Pe)?;
+    if headers.has_exception_directory() {
+        return Err(PeLoadError::ExceptionDirectoryUnsupported);
+    }
     if headers.size_of_image as usize > buf.len() {
         return Err(PeLoadError::ImageLargerThanBuffer);
     }
@@ -185,4 +203,40 @@ fn finish_pe_in_buffer(buf: &mut [u8], n: usize, aslr_seed: u64) -> Result<PeLoa
         load_base,
         import_dll_count: imports,
     })
+}
+
+#[cfg(test)]
+mod lazy_map_tests {
+    use super::*;
+    use crate::loader::pe_image::Pe64Headers;
+
+    fn hdr(size_of_image: u32) -> Pe64Headers {
+        Pe64Headers {
+            entry_point_rva: 0,
+            image_base: 0,
+            size_of_image,
+            number_of_sections: 0,
+            subsystem: 0,
+            import_table_rva: 0,
+            import_table_size: 0,
+            base_reloc_rva: 0,
+            base_reloc_size: 0,
+            resource_rva: 0,
+            resource_size: 0,
+            exception_rva: 0,
+            exception_size: 0,
+            tls_rva: 0,
+            tls_size: 0,
+            delay_import_rva: 0,
+            delay_import_size: 0,
+            nx_compat_marked: false,
+        }
+    }
+
+    #[test]
+    fn pe_lazy_map_recommended_respects_threshold() {
+        let large = ((PE_LAZY_MAP_THRESHOLD_PAGES + 1) * 4096) as u32;
+        assert!(pe_lazy_map_recommended(&hdr(large)));
+        assert!(!pe_lazy_map_recommended(&hdr(4096)));
+    }
 }
