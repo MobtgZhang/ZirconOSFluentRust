@@ -5,6 +5,9 @@
 use super::directory::DirectoryObject;
 use core::ptr::NonNull;
 
+/// Max reparse steps for future symbolic-link resolution (no symlink objects yet).
+pub const MAX_SYMLINK_RESOLVE_DEPTH: usize = 8;
+
 /// `\Sessions\` prefix for session-local namespace routing.
 pub const SESSIONS_PREFIX: &[u8] = br"\Sessions\";
 
@@ -145,6 +148,25 @@ impl NamespaceBuckets {
         }
         self.insert_session_path(path, object)
     }
+
+    /// Lookup after DAC ([`crate::se::acl::access_check_sid_equal`]) and session match on `path`.
+    #[must_use]
+    pub fn lookup_session_path_for_token(
+        &self,
+        token: &crate::se::token::SecurityToken,
+        path: &[u8],
+        resource_owner: &crate::se::sid::Sid,
+    ) -> Option<NonNull<()>> {
+        if token.access_check_vs_owner(resource_owner) != crate::se::acl::AccessCheckResult::Granted {
+            return None;
+        }
+        let rest = strip_sessions_subpath(path)?;
+        let (sid, _) = parse_session_id_and_name(rest)?;
+        if sid as u32 != token.session_id {
+            return None;
+        }
+        self.lookup_session_path(path)
+    }
 }
 
 /// Split `WinSta0\Default` into `WinSta0` + `Some(Default)`; `WinSta0` → `None` desktop.
@@ -207,6 +229,29 @@ mod tests {
         assert!(ns
             .insert_session_path_for_token(&tok0, br"\Sessions\1\Other", p)
             .is_err());
+    }
+
+    #[test]
+    fn lookup_session_path_for_token_requires_dac_and_session() {
+        use crate::se::sid::Sid;
+        let mut ns = NamespaceBuckets::new();
+        let p = NonNull::new(0x2000usize as *mut ()).unwrap();
+        ns.insert_session_path(br"\Sessions\0\Res", p).unwrap();
+        let tok = SecurityToken::system_bootstrap();
+        let world = Sid::well_known_world();
+        assert_eq!(
+            ns.lookup_session_path_for_token(&tok, br"\Sessions\0\Res", &world),
+            Some(p)
+        );
+        let other = Sid {
+            revision: 1,
+            sub_auth_count: 1,
+            identifier_authority: [0, 0, 0, 0, 0, 5],
+            sub_authority: [99, 0, 0, 0, 0, 0, 0, 0],
+        };
+        assert!(ns
+            .lookup_session_path_for_token(&tok, br"\Sessions\0\Res", &other)
+            .is_none());
     }
 
     #[test]

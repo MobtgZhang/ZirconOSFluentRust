@@ -12,6 +12,8 @@ impl ObjectTypeIndex {
     pub const NONE: Self = Self(0);
     pub const WINDOW_STATION: Self = Self(10);
     pub const DESKTOP: Self = Self(11);
+    /// File/section bring-up object; no FS-backed body yet — delete is a no-op hook.
+    pub const FILE_OBJECT: Self = Self(12);
     pub const TEST_STUB: Self = Self(250);
 }
 
@@ -71,6 +73,14 @@ impl ObjectHeader {
     }
 }
 
+unsafe fn file_object_bringup_delete_static(_p: *mut ()) {}
+
+fn file_object_bringup_ok_to_close(_p: *mut ()) -> bool {
+    true
+}
+
+unsafe fn file_object_bringup_close_static(_p: *mut ()) {}
+
 #[must_use]
 pub fn ob_descriptor_for_type(ty: ObjectTypeIndex) -> ObTypeDescriptor {
     #[cfg(test)]
@@ -92,6 +102,11 @@ pub fn ob_descriptor_for_type(ty: ObjectTypeIndex) -> ObTypeDescriptor {
             close_procedure: Some(crate::ob::winsta::close_desktop_static),
             ok_to_close_procedure: Some(crate::ob::winsta::ok_to_close_desktop_static),
         },
+        ObjectTypeIndex::FILE_OBJECT => ObTypeDescriptor {
+            delete_procedure: Some(file_object_bringup_delete_static),
+            close_procedure: Some(file_object_bringup_close_static),
+            ok_to_close_procedure: Some(file_object_bringup_ok_to_close),
+        },
         _ => OB_TYPE_EMPTY,
     }
 }
@@ -100,6 +115,7 @@ pub fn ob_descriptor_for_type(ty: ObjectTypeIndex) -> ObTypeDescriptor {
 pub const OB_BRINGUP_TYPED_INDICES: &[ObjectTypeIndex] = &[
     ObjectTypeIndex::WINDOW_STATION,
     ObjectTypeIndex::DESKTOP,
+    ObjectTypeIndex::FILE_OBJECT,
 ];
 
 /// Enumerate bring-up types and their descriptors (single entry point for future full type tables).
@@ -195,7 +211,7 @@ mod tests {
                 with_delete += 1;
             }
         });
-        assert_eq!(with_delete, 2);
+        assert_eq!(with_delete, 3);
     }
 
     #[test]
