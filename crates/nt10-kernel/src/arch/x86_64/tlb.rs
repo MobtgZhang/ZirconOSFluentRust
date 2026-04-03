@@ -3,6 +3,9 @@
 //! **SMP acceptance:** application processors must load the **same IDT** as the BSP (including the gate
 //! for [`TLB_FLUSH_IPI_VECTOR`]) before [`smp_set_online_cpu_count`] reports more than one logical CPU.
 //! Otherwise the flush IPI vector is undefined on APs and shootdown is unreliable.
+//!
+//! QEMU / manual steps: [SMP-MM-TLB-QEMU.md](../../../../../docs/en/SMP-MM-TLB-QEMU.md) (English),
+//! [SMP-MM-TLB-QEMU.md](../../../../../docs/cn/SMP-MM-TLB-QEMU.md) (中文).
 
 use core::arch::asm;
 use core::sync::atomic::{AtomicU32, AtomicU64, Ordering};
@@ -157,6 +160,28 @@ pub fn shootdown_range_all_cpus(va_start: u64, va_end: u64) {
         }
     }
 }
+
+/// After editing a 4 KiB PTE for `va` under `cr3_phys`, choose invalidation strategy:
+/// - **Current CR3, single CPU**: local [`invlpg`] only.
+/// - **SMP** (`smp_online_cpu_count` &gt; 1) **or** `cr3_phys != read_cr3()`: [`shootdown_range_all_cpus`]
+///   so other logical processors or a future switch to that address space do not keep stale TLB entries.
+///
+/// Pair every successful [`crate::mm::pt::map_4k`] / [`crate::mm::pt::unmap_4k`] that changes a PTE with this
+/// helper or an equivalent range shootdown (see [`MM-Goals-and-Invariants.md`](../../../../../docs/en/MM-Goals-and-Invariants.md)).
+#[cfg(target_arch = "x86_64")]
+pub fn flush_after_pte_change(cr3_phys: u64, va: u64) {
+    let end = va.saturating_add(4096);
+    if smp_online_cpu_count() > 1 || crate::arch::x86_64::paging::read_cr3() != cr3_phys {
+        shootdown_range_all_cpus(va, end);
+    } else {
+        unsafe {
+            invlpg(va);
+        }
+    }
+}
+
+#[cfg(not(target_arch = "x86_64"))]
+pub fn flush_after_pte_change(_cr3_phys: u64, _va: u64) {}
 
 #[cfg(all(test, target_arch = "x86_64"))]
 mod shootdown_bringup_tests {
