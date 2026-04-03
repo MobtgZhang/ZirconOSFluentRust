@@ -9,6 +9,15 @@ repository.workspace = true
 [lib]
 crate-type = ["lib"]
 
+[features]
+default = []
+## Optional pool alloc/free counters for diagnostics (`crate::mm::pool::pool_stats_snapshot`).
+mm-pool-stats = []
+## Tag histogram buckets `tag % 8` (`crate::mm::pool::pool_tag_buckets_snapshot`).
+mm-pool-tag-hist = []
+## Extra serial checkpoints in `kmain` (enable on `nt10-kernel-bin` when debugging bring-up).
+kernel-infra-selftest = []
+
 [dependencies]
 nt10-boot-protocol = { path = "../nt10-boot-protocol" }
 
