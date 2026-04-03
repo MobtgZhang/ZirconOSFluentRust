@@ -5,6 +5,7 @@
 //!   [`RR_LEN`] > 0, the RR cursor advances once every [`RR_TICKS_PER_SCHED_SLICE`] ticks (software quantum).
 //! - **Preemption:** the ISR does **not** perform a full context switch; cooperative [`yield_message_wait`]
 //!   and DPC drain advance multi-threaded bring-up tests. MLFQ and real context-switch preemption are future work.
+//! - **Empty RR ring:** when [`RR_LEN`] is zero, ticks still advance [`TIMER_QUANTA`] without selecting a thread.
 
 use core::sync::atomic::{AtomicU32, AtomicUsize, Ordering};
 

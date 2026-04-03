@@ -1,5 +1,8 @@
 //! KTimer / kernel timers (bring-up).
 //!
+//! IRQ-backed ticks ultimately funnel into [`super::sched`] / DPC-style work from
+//! [`crate::arch::x86_64::isr`] when the LAPIC timer path is armed (see [`crate::hal::x86_64::apic`]).
+//!
 //! ## UEFI Phase 5 path (`SetTimer` / `KillTimer` bring-up)
 //!
 //! There is no IRQ timer delivery into the single-threaded UEFI poll loop. The formal integration
