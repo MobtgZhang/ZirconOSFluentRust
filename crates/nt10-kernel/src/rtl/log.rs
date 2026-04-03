@@ -17,6 +17,8 @@ pub const SUB_VID: &[u8] = b"[VID]";
 pub const SUB_SUBS: &[u8] = b"[SUBS]";
 pub const SUB_SESS: &[u8] = b"[SESS]";
 pub const SUB_INPT: &[u8] = b"[INPT]";
+/// Infrastructure bring-up checkpoints ([`crate::infra_bringup`]).
+pub const SUB_INFR: &[u8] = b"[INFR]";
 
 /// `[ZFOS][sub] message\r\n` via [`Hal::debug_write`].
 pub fn log_line_hal<H: Hal + ?Sized>(hal: &H, sub: &[u8], msg: &[u8]) {
