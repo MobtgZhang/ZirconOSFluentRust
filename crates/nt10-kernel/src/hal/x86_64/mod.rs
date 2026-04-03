@@ -4,6 +4,7 @@ pub mod acpi;
 pub mod apic;
 pub mod framebuffer;
 pub mod hpet;
+pub mod ioapic;
 pub mod pci;
 pub mod pic;
 pub mod pit;

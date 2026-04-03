@@ -2,6 +2,12 @@
 //!
 //! Requires the APIC MMIO region (typically `0xFEE0_0000`) to be mapped by firmware paging
 //! (common under UEFI + QEMU/OVMF).
+//!
+//! # Bring-up gaps (vs a production HAL)
+//!
+//! - **I/O APIC**: fixed routing for arbitrary GSIs (keyboard, storage IRQs) beyond firmware defaults.
+//! - **x2APIC / cluster**: not a target for this tree.
+//! - **AP startup IPI**: application processors share the same IDT expectation as the BSP ([`crate::arch::x86_64::idt`]).
 
 use core::sync::atomic::{AtomicU64, Ordering};
 
