@@ -1,4 +1,6 @@
 //! ALPC port — connection server endpoint with a fixed-depth message queue (bring-up).
+//! Send paths reject `payload.len() > ALPC_INLINE_BYTES` and overflowed depth (cross-address-space copies
+//! use a separate cap in [`super::cross_proc`]).
 
 use super::message::{AlpcInlineMessage, ALPC_INLINE_BYTES};
 use core::sync::atomic::{AtomicU64, Ordering};

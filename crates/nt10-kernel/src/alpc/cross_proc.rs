@@ -10,6 +10,12 @@ use super::message::AlpcInlineMessage;
 use super::port::AlpcPort;
 
 const CROSS_AS_BOUNCE_CAP: usize = 4096;
+
+#[inline]
+#[must_use]
+fn user_canonical_dest_va(va: u64) -> bool {
+    va < 0x0000_8000_0000_0000
+}
 static CROSS_AS_BOUNCE: SpinLock<[u8; CROSS_AS_BOUNCE_CAP]> = SpinLock::new([0u8; CROSS_AS_BOUNCE_CAP]);
 static CROSS_AS_BOUNCE_LEN: AtomicU32 = AtomicU32::new(0);
 
@@ -87,6 +93,9 @@ pub fn post_cross_address_space_into_remote_va(
     if src.len() > CROSS_AS_BOUNCE_CAP || remote_cr3 == 0 {
         return Err(());
     }
+    if !user_canonical_dest_va(remote_user_dest) {
+        return Err(());
+    }
     let mut g = CROSS_AS_BOUNCE.lock();
     g[..src.len()].copy_from_slice(src);
     let n = src.len();
@@ -104,10 +113,16 @@ pub fn post_cross_address_space_into_remote_va(
 #[cfg(any(not(target_arch = "x86_64"), test))]
 pub fn post_cross_address_space_into_remote_va(
     _remote_cr3: u64,
-    _remote_user_dest: u64,
-    _src: &[u8],
+    remote_user_dest: u64,
+    src: &[u8],
 ) -> Result<(), ()> {
-    Err(())
+    if !src.is_empty() && !user_canonical_dest_va(remote_user_dest) {
+        return Err(());
+    }
+    if !src.is_empty() {
+        return Err(());
+    }
+    Ok(())
 }
 
 /// Copy `src` into a kernel bounce buffer when the target matches the running address space.
@@ -207,5 +222,10 @@ mod tests {
     #[test]
     fn cross_address_space_rejects_unknown_cr3() {
         assert!(post_cross_address_space(u64::MAX, b"x").is_err());
+    }
+
+    #[test]
+    fn cross_into_remote_rejects_non_canonical_user_va_stub() {
+        assert!(post_cross_address_space_into_remote_va(1, 0xFFFF_8000_0000_0000, b"x").is_err());
     }
 }
