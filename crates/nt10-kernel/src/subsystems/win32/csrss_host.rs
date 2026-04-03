@@ -240,6 +240,8 @@ pub fn phase4_compositor_serial_smoke() {
 /// Bring-up: Win32 syscalls, CSR connect, Phase 3/4 serial smoke (x86_64).
 pub fn bringup_kernel_thread_smoke() {
     super::syscall_win32::register_win32_syscalls_bringup();
+    #[cfg(target_arch = "x86_64")]
+    crate::arch::x86_64::nt_syscall_stubs::register_nt_syscall_stubs_bringup();
     let _ = post_from_client(CsrMessageEnvelope::empty(CSR_CONNECT));
     let _ = pump_one();
     #[cfg(target_arch = "x86_64")]
