@@ -20,3 +20,7 @@ This project targets **documented, public** behavior (for example MSDN/WDK-style
 - When layout or calling convention must match an external contract, **cross-check** with documentation and self-tests, and note the basis in code comments where helpful.
 
 See also: [Roadmap-and-TODO.md](Roadmap-and-TODO.md) baseline statement.
+
+## Public reference list (links only)
+
+Curated **link table** (no pasted third-party text): [Public-References.md](Public-References.md).

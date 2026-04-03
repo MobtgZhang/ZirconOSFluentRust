@@ -12,7 +12,9 @@ This document describes how the **ZirconOS NT10** kernel exposes system services
 ## Mechanism
 
 - User mode invokes `syscall`; the CPU transfers to the address in `IA32_LSTAR` with a documented register convention (see Intel SDM / AMD APM for the instruction, not reproduced here).
-- The kernel maintains a **dispatch table** ([`arch/x86_64/syscall.rs`](../../crates/nt10-kernel/src/arch/x86_64/syscall.rs)); indices are **ZirconOS syscall numbers**. The **authoritative user-side number list** is the `numbers` module plus `SYSCALL_NUMBERING_REVISION` in [`libs/ntdll.rs`](../../crates/nt10-kernel/src/libs/ntdll.rs); bump the revision whenever those constants change.
+- The kernel maintains a **dispatch table** ([`arch/x86_64/syscall.rs`](../../crates/nt10-kernel/src/arch/x86_64/syscall.rs)). Slots may be registered more than once: **Zircon-local** indices in [`libs/ntdll.rs`](../../crates/nt10-kernel/src/libs/ntdll.rs) `numbers` and **Windows 10 22H2 x64** `Nt*` indices in [`libs/ntdll.rs`](../../crates/nt10-kernel/src/libs/ntdll.rs) `windows10_22h2_x64` / [`arch/x86_64/nt_syscall_indices.rs`](../../crates/nt10-kernel/src/arch/x86_64/nt_syscall_indices.rs) (public tables — see [Binary-compat-NT10-scope.md](Binary-compat-NT10-scope.md)).
+- **Argument unpack** is configurable: [`arch/x86_64/syscall_abi.rs`](../../crates/nt10-kernel/src/arch/x86_64/syscall_abi.rs) defaults to **LegacyZircon** (`rdi`…`r8` + `r10`, sixth fixed `0`). For NT-style user stubs, call `zr_syscall_x64_unpack_set(Nt10X64)` and pass args per the public x64 convention (`r10`, `rdx`, `r8`, `r9`, stack `+0x28/+0x30` at the `syscall` boundary). **Do not** enable `Nt10X64` until the user stack layout is valid — otherwise the kernel may read garbage.
+- Bump [`SYSCALL_NUMBERING_REVISION`](../../crates/nt10-kernel/src/libs/ntdll.rs) when `numbers` or `windows10_22h2_x64` changes.
 - `IA32_STAR`, `IA32_FMASK`, and GDT user segments must be programmed together before enabling user callers. Bring-up currently sets **`EFER.SCE`** only after a suitable GDT is installed.
 
 ## Policy
