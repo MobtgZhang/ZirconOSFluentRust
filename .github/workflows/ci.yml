@@ -31,6 +31,9 @@ jobs:
       - name: nt10-kernel unit tests (host)
         run: cargo test -p nt10-kernel --lib
 
+      - name: nt10-kernel unit tests (mm-pool-tag-hist)
+        run: cargo test -p nt10-kernel --lib --features mm-pool-tag-hist
+
       - name: nt10-kernel-bin bare-metal build
         run: cargo build -p nt10-kernel-bin --target x86_64-unknown-none
 
@@ -50,3 +53,12 @@ jobs:
 
       - name: Verify Phase6 serial keyword strings (source)
         run: bash scripts/verify-phase6-serial-keywords.sh
+
+      - name: Verify kernel infra keyword strings (source)
+        run: bash scripts/verify-kernel-infra-keywords.sh
+
+      - name: Verify phase2 infra keyword strings (source)
+        run: bash scripts/verify-phase2-infra-keywords.sh
+
+      - name: Verify MM plan keyword strings (source)
+        run: bash scripts/verify-mm-keywords.sh
