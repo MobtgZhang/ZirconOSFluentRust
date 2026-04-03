@@ -20,3 +20,7 @@
 - 若必须与外部约定一致（布局/调用约定），以文档 + 自测交叉验证，并在注释中简要标明依据类型。
 
 另见：[Roadmap-and-TODO.md](Roadmap-and-TODO.md) 基线说明；英文版 [Clean-Room-Implementation.md](../en/Clean-Room-Implementation.md)。
+
+## 公开参考链接表
+
+仅链接、不粘贴第三方正文：[Public-References.md](Public-References.md)。
