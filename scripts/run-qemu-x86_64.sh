@@ -22,6 +22,12 @@ Environment:
               When unset, a temp ESP is built via scripts/pack-esp.sh (kernel at EFI/ZirconOSFluent/NT10KRNL.BIN).
   PROFILE     Passed to pack-esp.sh when building temp ESP: `release` or `debug` (default).
   ZBM10_NO_REBOOT  If non-empty, pass QEMU `-no-reboot` so a guest triple fault exits instead of resetting.
+  Infra serial markers: scripts/verify-kernel-infra-keywords.sh (e.g. kmain_phase_begin, handoff_invalid_abort_*).
+
+  MM serial (optional): set ZBM10_CAPTURE_SERIAL to a host file path to tee guest serial (stdio) into that file
+  after QEMU exits. Then run: scripts/verify-mm-serial-keywords.sh [--require] "\$ZBM10_CAPTURE_SERIAL"
+  to grep [ZFOS][MM] lines (pool failures, demand-zero logs, etc.). Use ZBM10_MM_SERIAL_CHECK=1 to require
+  at least one MM marker after capture (non-zero exit if missing).
 
   Monolithic (e.g. /usr/share/ovmf/OVMF.fd): use -bios only; do not pair OVMF_VARS.fd.
   Split (e.g. OVMF_CODE.fd + OVMF_VARS.fd): two pflash drives; VARS is auto-picked only when
@@ -140,5 +146,14 @@ fi
 
 # FAT directory as virtual disk (ESP layout for EFI boot).
 QEMU_ARGS+=(-hda "fat:rw:$ESP")
+
+if [[ -n "${ZBM10_CAPTURE_SERIAL:-}" ]]; then
+  qemu-system-x86_64 "${QEMU_ARGS[@]}" "$@" 2>&1 | tee "$ZBM10_CAPTURE_SERIAL"
+  qe=${PIPESTATUS[0]}
+  if [[ -n "${ZBM10_MM_SERIAL_CHECK:-}" ]]; then
+    "$ZBM10_ROOT/scripts/verify-mm-serial-keywords.sh" --require "$ZBM10_CAPTURE_SERIAL"
+  fi
+  exit "$qe"
+fi
 
 exec qemu-system-x86_64 "${QEMU_ARGS[@]}" "$@"
